@@ -121,10 +121,12 @@ class FrameDetailView(APIView):
             return Response({"error": "Only admins can update frames"}, status=status.HTTP_403_FORBIDDEN)
         try:
             frame = Frame.objects.get(id=frame_id)
+            print("Received data:", request.data)  # For debugging
             serializer = FrameSerializer(frame, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
+            print("Serializer errors:", serializer.errors)  # For debugging
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Frame.DoesNotExist:
             return Response({"error": "Frame not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -166,8 +168,11 @@ class BulkVariantCreateView(APIView):
         for variant_data in variants_data:
             variant_type = variant_data.get('variant_type')
             variant_form_data = request.FILES.get(variant_data.get('image_key')) if variant_data.get('image_key') else None
+            variant_corner_form_data = request.FILES.get(f"{variant_data.get('image_key')}_corner") if variant_data.get('image_key') else None
             if variant_form_data:
                 variant_data['image'] = variant_form_data
+            if variant_corner_form_data and variant_type != 'hanging':
+                variant_data['corner_image'] = variant_corner_form_data
 
             if not variant_type:
                 errors.append({"error": "variant_type is required"})
@@ -379,38 +384,24 @@ class UploadCroppedImageView(APIView):
 class AddToCartView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser]
+
     def post(self, request):
         cart, created = Cart.objects.get_or_create(user=request.user)
         serializer = CartItemCreateSerializer(data=request.data)
         if serializer.is_valid():
             frame = serializer.validated_data['frame']
-            color_variant = serializer.validated_data.get('color_variant')
-            if color_variant and color_variant.frame != frame:
-                return Response({"error": "Color variant does not belong to the selected frame"},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            size_variant = serializer.validated_data.get('size_variant')
-            if size_variant and size_variant.frame != frame:
-                return Response({"error": "Size variant does not belong to the selected frame"},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            finish_variant = serializer.validated_data.get('finish_variant')
-            if finish_variant and finish_variant.frame != frame:
-                return Response({"error": "Finish variant does not belong to the selected frame"},
-                                status=status.HTTP_400_BAD_REQUEST)
-
-            hanging_variant = serializer.validated_data.get('hanging_variant')
-            if hanging_variant and hanging_variant.frame != frame:
-                return Response({"error": "Hanging variant does not belong to the selected frame"},
-                                status=status.HTTP_400_BAD_REQUEST)
-
+            for variant_type in ['color_variant', 'size_variant', 'finish_variant', 'hanging_variant']:
+                variant = serializer.validated_data.get(variant_type)
+                if variant and variant.frame != frame:
+                    return Response({"error": f"{variant_type} does not belong to the selected frame"},
+                                    status=status.HTTP_400_BAD_REQUEST)
             cart_item = serializer.save(cart=cart)
-            return Response({"message": "Item added to cart successfully"}, status=status.HTTP_201_CREATED)
-
+            return Response(CartItemSerializer(cart_item, context={'request': request}).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class CartDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         cart, created = Cart.objects.get_or_create(user=request.user)
         items = cart.items.all()
@@ -419,10 +410,11 @@ class CartDetailView(APIView):
 
 class CartItemDetailView(APIView):
     permission_classes = [IsAuthenticated]
+
     def put(self, request, item_id):
         try:
             cart_item = CartItem.objects.get(id=item_id, cart__user=request.user)
-            serializer = CartItemCreateSerializer(cart_item, data=request.data, partial=True)
+            serializer = CartItemUpdateSerializer(cart_item, data=request.data, partial=True)
             if serializer.is_valid():
                 serializer.save()
                 cart_item.save()  # Recalculate total_price
@@ -438,16 +430,5 @@ class CartItemDetailView(APIView):
             return Response({"message": "Cart item deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
         except CartItem.DoesNotExist:
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
-class CartItemViewSet(viewsets.ModelViewSet):
-    queryset = CartItem.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    def get_serializer_class(self):
-        if self.action in ['update', 'partial_update']:
-            return CartItemUpdateSerializer
-        return CartItemSerializer
-
-    def get_queryset(self):
-        return self.queryset.filter(user_cart=self.request.user_id)
 
 

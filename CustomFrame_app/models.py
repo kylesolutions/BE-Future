@@ -18,6 +18,7 @@ class Frame(models.Model):
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
     image = models.ImageField(upload_to='frames/')
+    corner_image = models.ImageField(upload_to='frames/corner/')
     inner_width = models.FloatField()
     inner_height = models.FloatField()
     created_by = models.ForeignKey(Login, on_delete=models.CASCADE)
@@ -30,6 +31,7 @@ class ColorVariant(models.Model):
     frame = models.ForeignKey(Frame, related_name='color_variants', on_delete=models.CASCADE)
     color_name = models.CharField(max_length=50)
     image = models.ImageField(upload_to='frame_variants/colors/')
+    corner_image = models.ImageField(upload_to='frame_variants/colors/corner/')
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
@@ -48,6 +50,7 @@ class SizeVariant(models.Model):
     inner_width = models.FloatField()
     inner_height = models.FloatField()
     image = models.ImageField(upload_to='frame_variants/sizes/', blank=True, null=True)
+    corner_image = models.ImageField(upload_to='frame_variants/sizes/corner/', blank=True, null=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
@@ -64,6 +67,7 @@ class FinishingVariant(models.Model):
     frame = models.ForeignKey(Frame, related_name='finishing_variants', on_delete=models.CASCADE)
     finish_name = models.CharField(max_length=50)
     image = models.ImageField(upload_to='frame_variants/finishes/')
+    corner_image = models.ImageField(upload_to='frame_variants/finishes/corner/')
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
@@ -92,7 +96,6 @@ class FrameHangVariant(models.Model):
     class Meta:
         unique_together = ('frame', 'hanging_name')
 
-
 class Cart(models.Model):
     user = models.ForeignKey(Login, on_delete=models.CASCADE, related_name='carts')
     created_at = models.DateTimeField(auto_now_add=True)
@@ -112,6 +115,11 @@ class CartItem(models.Model):
     finish_variant = models.ForeignKey(FinishingVariant, null=True, blank=True, on_delete=models.SET_NULL)
     hanging_variant = models.ForeignKey(FrameHangVariant, null=True, blank=True, on_delete=models.SET_NULL)
     quantity = models.PositiveIntegerField(default=1)
+    transform_x = models.FloatField(default=0)
+    transform_y = models.FloatField(default=0)
+    scale = models.FloatField(default=1)
+    rotation = models.FloatField(default=0)
+    frame_rotation = models.FloatField(default=0)
     total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
     def save(self, *args, **kwargs):
@@ -130,8 +138,6 @@ class CartItem(models.Model):
 
     def __str__(self):
         return f"CartItem for {self.cart.user.username} - Frame: {self.frame.name}"
-
-
 
 class Order(models.Model):
     user = models.ForeignKey(Login, on_delete=models.CASCADE, related_name='orders')
@@ -161,3 +167,4 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"OrderItem for {self.frame.name} ({self.quantity})"
+
