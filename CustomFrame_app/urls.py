@@ -1,16 +1,21 @@
+from tkinter.font import names
+
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from CustomFrame_app import views
-from CustomFrame_app.views import FrameListCreateView, UserDetailView, UserListView, \
+from CustomFrame_app.views import UserDetailView, UserListView, \
     ColorVariantDetailView, SizeVariantDetailView, FinishingVariantDetailView, HangingVariantDetailView, UserManageView, \
     FrameDetailView, BulkVariantCreateView, UploadCroppedImageView, AddToCartView, CartDetailView, CartItemDetailView, \
-    upload_image
+    upload_image, UserRegistrationView, FrameCategoriesListCreateView, \
+    FrameListCreateView, FrameCategoriesDetailView, SavedItemView
 
 urlpatterns = [
-    path('api/user_registration/', views.user_registration, name='user_registration'),
+    path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
     path('api/user_login/', views.user_login, name='user_login'),
     path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('categories/', FrameCategoriesListCreateView.as_view(), name='categories-list-create'),
+    path('categories/<int:pk>/', FrameCategoriesDetailView.as_view(), name='categories-detail'),
     path('frames/', FrameListCreateView.as_view(), name='frame-list-create'),
     path('frames/<int:frame_id>/', FrameDetailView.as_view(), name='frame-detail'),
     path('frames/<int:frame_id>/variants/', BulkVariantCreateView.as_view(), name='variant-create'),
@@ -26,4 +31,8 @@ urlpatterns = [
     path('add-to-cart/', AddToCartView.as_view(), name='add_to_cart'),
     path('cart/', CartDetailView.as_view(), name='cart_detail'),
     path('cart/items/<int:item_id>/', CartItemDetailView.as_view(), name='cart_item_detail'),
+    path('save-items/', SavedItemView.as_view(), name='save_items'),
+    path('save-items/<int:pk>/', SavedItemView.as_view(), name='save_item_detail'),
+    path('send-order-confirmation/',views.send_order_confirmation,name='send-order-confirmation'),
+    path('update-saved-items-status/', views.update_saved_items_status, name='update-saved-items-status'),
 ]

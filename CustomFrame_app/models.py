@@ -14,6 +14,13 @@ class Login(AbstractUser):
     address = models.CharField(max_length=100, blank=True, null=True)
     is_blocked = models.BooleanField(default=False)
 
+class FrameCategories(models.Model):
+    frameCategory = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.frameCategory
+
+
 class Frame(models.Model):
     name = models.CharField(max_length=100)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -23,6 +30,13 @@ class Frame(models.Model):
     inner_height = models.FloatField()
     created_by = models.ForeignKey(Login, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
+    category = models.ForeignKey(
+        FrameCategories,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='frames'
+    )
 
     def __str__(self):
         return self.name
@@ -135,7 +149,6 @@ class CartItem(models.Model):
             price += self.hanging_variant.price
         self.total_price = price * self.quantity
         super().save(*args, **kwargs)
-
     def __str__(self):
         return f"CartItem for {self.cart.user.username} - Frame: {self.frame.name}"
 
@@ -167,4 +180,44 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"OrderItem for {self.frame.name} ({self.quantity})"
+
+
+from django.db import models
+
+class SavedItem(models.Model):
+    user = models.ForeignKey(Login, on_delete=models.CASCADE)
+    frame = models.ForeignKey('Frame', on_delete=models.SET_NULL, null=True, blank=True)
+    color_variant = models.ForeignKey('ColorVariant', on_delete=models.SET_NULL, null=True, blank=True)
+    size_variant = models.ForeignKey('SizeVariant', on_delete=models.SET_NULL, null=True, blank=True)
+    finish_variant = models.ForeignKey('FinishingVariant', on_delete=models.SET_NULL, null=True, blank=True)
+    hanging_variant = models.ForeignKey('FrameHangVariant', on_delete=models.SET_NULL, null=True, blank=True)
+    custom_width = models.FloatField(null=True, blank=True)
+    custom_height = models.FloatField(null=True, blank=True)
+    transform_x = models.FloatField(default=0)
+    transform_y = models.FloatField(default=0)
+    scale = models.FloatField(default=1)
+    rotation = models.FloatField(default=0)
+    frame_rotation = models.FloatField(default=0)
+    adjusted_image = models.ImageField(upload_to='adjusted_images/', null=True, blank=True)
+    original_image = models.ImageField(upload_to='original_images/', null=True, blank=True)
+    cropped_image = models.ImageField(upload_to='cropped_images/', null=True, blank=True)
+    # Print-related fields
+    print_width = models.FloatField(null=True, blank=True)
+    print_height = models.FloatField(null=True, blank=True)
+    print_unit = models.CharField(max_length=10, choices=[('inches', 'Inches'), ('cm', 'Cm')], default='inches')
+    media_type = models.CharField(max_length=50, default='Photopaper')
+    paper_type = models.CharField(max_length=50, null=True, blank=True)
+    fit = models.CharField(max_length=20, choices=[('borderless', 'Borderless'), ('bordered', 'Bordered')], default='borderless')
+    border_depth = models.IntegerField(null=True, blank=True, default=0)
+    border_color = models.CharField(max_length=7, default='#ffffff')
+    frame_depth = models.IntegerField(null=True, blank=True, default=0)
+    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('paid', 'Paid')], default='pending')
+    total_price = models.DecimalField(null=True,max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"SavedItem {self.id} for user {self.user.username}"
+
+
 

@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, CartItem
+from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
+    CartItem, SavedItem, FrameCategories
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -16,6 +17,11 @@ class Employee_Serializer(serializers.ModelSerializer):
     class Meta:
         model = Login
         fields = ['username', 'password', 'is_employee', 'email', 'company_name', 'company_address', 'phone', 'id']
+
+class FrameCategoriesSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FrameCategories
+        fields = ['id', 'frameCategory']
 
 class ColorVariantSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, allow_null=True)
@@ -100,13 +106,21 @@ class FrameSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(allow_null=True, required=False)
     corner_image = serializers.ImageField(allow_null=True, required=False)
     created_by = UserDetails_Serializer(read_only=True)
+    category = FrameCategoriesSerializer(read_only=True)  # Display category details
+    category_id = serializers.PrimaryKeyRelatedField(
+        queryset=FrameCategories.objects.all(),
+        source='category',
+        write_only=True,
+        required=False,
+        allow_null=True
+    )  # Accept category ID for creation/update
 
     class Meta:
         model = Frame
         fields = [
             'id', 'name', 'price', 'image', 'corner_image', 'inner_width', 'inner_height',
             'color_variants', 'size_variants', 'finishing_variants',
-            'frameHanging_variant', 'created_by'
+            'frameHanging_variant', 'created_by', 'created_at', 'category', 'category_id'
         ]
 
     def to_representation(self, instance):
@@ -117,6 +131,7 @@ class FrameSerializer(serializers.ModelSerializer):
         if instance.corner_image and request:
             representation['corner_image'] = request.build_absolute_uri(instance.corner_image.url)
         return representation
+
 
 class CartItemCreateSerializer(serializers.ModelSerializer):
     frame = serializers.PrimaryKeyRelatedField(queryset=Frame.objects.all())
@@ -214,4 +229,10 @@ class CartItemSerializer(serializers.ModelSerializer):
         if obj.adjusted_image:
             return self.context['request'].build_absolute_uri(obj.adjusted_image.url)
         return None
+
+class SavedItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SavedItem
+        fields = '__all__'
+        read_only_fields = ['user', 'created_at', 'updated_at']
 

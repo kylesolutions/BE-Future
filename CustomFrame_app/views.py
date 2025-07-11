@@ -2,48 +2,54 @@ import os
 
 from django.conf import settings
 from django.core.files.storage import default_storage, FileSystemStorage
+from django.core.mail import send_mail
+from django.db.models import ProtectedError
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 from rest_framework import status, generics, views, serializers, viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.decorators import api_view
+from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly
+from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem
+    CartItem, SavedItem, FrameCategories
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
-    CartItemSerializer, CartItemUpdateSerializer
+    CartItemSerializer, CartItemUpdateSerializer, SavedItemSerializer, FrameCategoriesSerializer
 )
 import json
 
 def index(request):
     return HttpResponse("Welcome to the Custom Photo Frame App!")
 
-@csrf_exempt
-def user_registration(request):
-    result_data = None
-    if request.method == 'POST':
-        form = UserRegister(request.POST)
+class UserRegistrationView(APIView):
+    permission_classes = [AllowAny]  # Allow unauthenticated access
+
+    def post(self, request):
+        form = UserRegister(request.data)
         if form.is_valid():
-            form = form.save(commit=False)
-            form.is_active = True
-            form.is_user = True
-            form.save()
-            result_data = True
-    try:
-        if result_data:
-            data = {'result': True}
+            user = form.save(commit=False)
+            user.is_active = True
+            # user.is_user = True  # Already set in UserRegister form
+            user.save()
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                'result': True,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh)
+            }, status=status.HTTP_201_CREATED)
         else:
-            error_dict = {i: form.errors[i][0] for i in form.errors}
-            data = {'result': False, 'errors': error_dict}
-    except:
-        data = {'result': False}
-    return JsonResponse(data, safe=False)
+            error_dict = {field: errors[0] for field, errors in form.errors.items()}
+            return Response({
+                'result': False,
+                'errors': error_dict
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 @csrf_exempt
 def user_login(request):
@@ -85,25 +91,47 @@ def user_login(request):
             return JsonResponse({'status': False, 'result': 'Invalid username or password'}, status=400)
     return JsonResponse({'status': False, 'result': 'Invalid request method'}, status=405)
 
-class FrameListCreateView(APIView):
-    def get_permissions(self):
-        if self.request.method == 'GET':
-            return [AllowAny()]
-        return [IsAuthenticated()]
+class FrameCategoriesListCreateView(generics.ListCreateAPIView):
+    queryset = FrameCategories.objects.all()
+    serializer_class = FrameCategoriesSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
-    def get(self, request):
-        frames = Frame.objects.all()
-        serializer = FrameSerializer(frames, many=True, context={'request': request})
-        return Response(serializer.data)
+class FrameCategoriesDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = FrameCategories.objects.all()
+    serializer_class = FrameCategoriesSerializer
+    permission_classes = [IsAuthenticated]
 
-    def post(self, request):
-        if not request.user.is_staff:
-            return Response({"error": "Only admins can create frames"}, status=status.HTTP_403_FORBIDDEN)
-        serializer = FrameSerializer(data=request.data, context={'request': request})
-        if serializer.is_valid():
-            serializer.save(created_by=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update categories")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete categories")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete category with associated frames")
+
+class FrameListCreateView(generics.ListCreateAPIView):
+    serializer_class = FrameSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        queryset = Frame.objects.all()
+        category_id = self.request.query_params.get('category_id')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            return Response(
+                {"error": "Only admins can create frames"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save(created_by=self.request.user)
 
 class FrameDetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -121,12 +149,12 @@ class FrameDetailView(APIView):
             return Response({"error": "Only admins can update frames"}, status=status.HTTP_403_FORBIDDEN)
         try:
             frame = Frame.objects.get(id=frame_id)
-            print("Received data:", request.data)  # For debugging
+            print("Received data:", request.data)  # Debug: Log incoming data
             serializer = FrameSerializer(frame, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
-            print("Serializer errors:", serializer.errors)  # For debugging
+            print("Serializer errors:", serializer.errors)  # Debug: Log validation errors
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except Frame.DoesNotExist:
             return Response({"error": "Frame not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -316,7 +344,6 @@ class UserDetailView(APIView):
 
 class UserListView(APIView):
     permission_classes = [IsAdminUser]
-
     def get(self, request):
         users = Login.objects.filter(is_user=True)
         serializer = UserDetails_Serializer(users, many=True)
@@ -432,3 +459,133 @@ class CartItemDetailView(APIView):
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
+class SavedItemView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            if request.user.is_staff or request.user.is_superuser:
+                items = SavedItem.objects.all()
+            else:
+                items = SavedItem.objects.filter(user=request.user)
+            serializer = SavedItemSerializer(items, many=True, context={'request': request})
+            return Response(serializer.data)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def post(self, request):
+        serializer = SavedItemSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        try:
+            item = SavedItem.objects.get(pk=pk, user=request.user)
+        except SavedItem.DoesNotExist:
+            return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = SavedItemSerializer(item, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        try:
+            item = SavedItem.objects.get(pk=pk, user=request.user)
+            item.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except SavedItem.DoesNotExist:
+            return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+def send_order_confirmation(request):
+    try:
+        data = request.data
+        customer_email = data.get('customerEmail')
+        customer_name = data.get('customerName')
+        customer_phone = data.get('customerPhone')
+        order_details = data.get('orderDetails')
+        total_cost = data.get('totalCost')
+        sender_email = data.get('senderEmail', 'jayalakshmikyle@gmail.com')
+
+        if not all([customer_email, customer_name, order_details, total_cost]):
+            return JsonResponse(
+                {'error': 'Missing required fields'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        subject = f"Order Confirmation for {customer_name}"
+        html_message = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; margin: 20px;">
+                <h2>Order Confirmation</h2>
+                <p>Dear {customer_name},</p>
+                <p>Thank you for your order! Below are the details:</p>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background-color: #f2f2f2;">
+                            <th style="border: 1px solid #ddd; padding: 8px;">Item</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Details</th>
+                            <th style="border: 1px solid #ddd; padding: 8px;">Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join([
+                            f"""
+                            <tr>
+                                <td style="border: 1px solid #ddd; padding: 8px;">Frame: {item['frame']}</td>
+                                <td style="border: 1px solid #ddd; padding: 8px;">
+                                    <p><strong>Size:</strong> {item['printSize']}</p>
+                                    <p><strong>Color:</strong> {item['color']}</p>
+                                    <p><strong>Finish:</strong> {item['finish']}</p>
+                                    <p><strong>Hanging:</strong> {item['hanging']}</p>
+                                    <p><strong>Media Type:</strong> {item['mediaType']}</p>
+                                    {f"<p><strong>Paper Type:</strong> {item['paperType']}</p>" if item['paperType'] != 'None' else ''}
+                                    <p><strong>Fit:</strong> {item['fit']}</p>
+                                    {f"<p><strong>Frame Depth:</strong> {item['frameDepth']}</p>" if item['frameDepth'] != 'None' else ''}
+                                    {f"<p><strong>Border Depth:</strong> {item['borderDepth']}</p>" if item['borderDepth'] != 'None' else ''}
+                                    {f"<p><strong>Border Color:</strong> {item['borderColor']}</p>" if item['borderColor'] != 'None' else ''}
+                                </td>
+                                <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                            </tr>
+                            """ for item in order_details
+                        ])}
+                    </tbody>
+                </table>
+                <p style="font-weight: bold; text-align: right;">Total Cost: ${total_cost}</p>
+                <p>Phone: {customer_phone}</p>
+                <p>Thank you for shopping with us!</p>
+            </body>
+        </html>
+        """
+        plain_message = f"Dear {customer_name},\n\nYour order has been confirmed!\n\nOrder Details:\n"
+        for item in order_details:
+            plain_message += f"- Frame: {item['frame']}, Size: {item['printSize']}, Price: ${item['price']}\n"
+        plain_message += f"\nTotal Cost: ${total_cost}\nPhone: {customer_phone}\n\nThank you for your order!"
+
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=sender_email,
+            recipient_list=[customer_email],
+            html_message=html_message,
+            fail_silently=False,
+        )
+
+        # Update status of all user's saved items to 'paid'
+        SavedItem.objects.filter(user=request.user).update(status='paid')
+
+        return JsonResponse({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+def update_saved_items_status(request):
+    try:
+        SavedItem.objects.filter(user=request.user).update(status='paid')
+        return JsonResponse({'message': 'Saved items status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
