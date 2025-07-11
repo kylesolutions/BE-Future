@@ -518,49 +518,6 @@ def send_order_confirmation(request):
             )
 
         subject = f"Order Confirmation for {customer_name}"
-        html_message = f"""
-        <html>
-            <body style="font-family: Arial, sans-serif; margin: 20px;">
-                <h2>Order Confirmation</h2>
-                <p>Dear {customer_name},</p>
-                <p>Thank you for your order! Below are the details:</p>
-                <table style="width: 100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background-color: #f2f2f2;">
-                            <th style="border: 1px solid #ddd; padding: 8px;">Item</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Details</th>
-                            <th style="border: 1px solid #ddd; padding: 8px;">Price</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {''.join([
-                            f"""
-                            <tr>
-                                <td style="border: 1px solid #ddd; padding: 8px;">Frame: {item['frame']}</td>
-                                <td style="border: 1px solid #ddd; padding: 8px;">
-                                    <p><strong>Size:</strong> {item['printSize']}</p>
-                                    <p><strong>Color:</strong> {item['color']}</p>
-                                    <p><strong>Finish:</strong> {item['finish']}</p>
-                                    <p><strong>Hanging:</strong> {item['hanging']}</p>
-                                    <p><strong>Media Type:</strong> {item['mediaType']}</p>
-                                    {f"<p><strong>Paper Type:</strong> {item['paperType']}</p>" if item['paperType'] != 'None' else ''}
-                                    <p><strong>Fit:</strong> {item['fit']}</p>
-                                    {f"<p><strong>Frame Depth:</strong> {item['frameDepth']}</p>" if item['frameDepth'] != 'None' else ''}
-                                    {f"<p><strong>Border Depth:</strong> {item['borderDepth']}</p>" if item['borderDepth'] != 'None' else ''}
-                                    {f"<p><strong>Border Color:</strong> {item['borderColor']}</p>" if item['borderColor'] != 'None' else ''}
-                                </td>
-                                <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
-                            </tr>
-                            """ for item in order_details
-                        ])}
-                    </tbody>
-                </table>
-                <p style="font-weight: bold; text-align: right;">Total Cost: ${total_cost}</p>
-                <p>Phone: {customer_phone}</p>
-                <p>Thank you for shopping with us!</p>
-            </body>
-        </html>
-        """
         plain_message = f"Dear {customer_name},\n\nYour order has been confirmed!\n\nOrder Details:\n"
         for item in order_details:
             plain_message += f"- Frame: {item['frame']}, Size: {item['printSize']}, Price: ${item['price']}\n"
@@ -571,7 +528,6 @@ def send_order_confirmation(request):
             message=plain_message,
             from_email=sender_email,
             recipient_list=[customer_email],
-            html_message=html_message,
             fail_silently=False,
         )
 
