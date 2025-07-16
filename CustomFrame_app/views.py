@@ -482,19 +482,24 @@ class SavedItemView(APIView):
 
     def put(self, request, pk):
         try:
-            item = SavedItem.objects.get(pk=pk, user=request.user)
+            if request.user.is_staff or request.user.is_superuser:
+                item = SavedItem.objects.get(pk=pk)
+            else:
+                item = SavedItem.objects.get(pk=pk, user=request.user)
+            serializer = SavedItemSerializer(item, data=request.data, partial=True)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except SavedItem.DoesNotExist:
             return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = SavedItemSerializer(item, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
     def delete(self, request, pk):
         try:
-            item = SavedItem.objects.get(pk=pk, user=request.user)
+            if request.user.is_staff or request.user.is_superuser:
+                item = SavedItem.objects.get(pk=pk)
+            else:
+                item = SavedItem.objects.get(pk=pk, user=request.user)
             item.delete()
             return Response(status=status.HTTP_204_NO_CONTENT)
         except SavedItem.DoesNotExist:
@@ -530,10 +535,8 @@ def send_order_confirmation(request):
             recipient_list=[customer_email],
             fail_silently=False,
         )
-
         # Update status of all user's saved items to 'paid'
         SavedItem.objects.filter(user=request.user).update(status='paid')
-
         return JsonResponse({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -545,3 +548,4 @@ def update_saved_items_status(request):
         return JsonResponse({'message': 'Saved items status updated to paid'}, status=status.HTTP_200_OK)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
