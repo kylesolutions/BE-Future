@@ -1,5 +1,3 @@
-from tkinter.font import names
-
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from CustomFrame_app import views
