@@ -7,7 +7,7 @@ from django.db.models import ProtectedError
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
-from rest_framework import status, generics, views, serializers, viewsets
+from rest_framework import status, generics, views, serializers, viewsets, permissions
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.parsers import MultiPartParser
@@ -17,11 +17,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, I
 from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem, SavedItem, FrameCategories
+    CartItem, SavedItem, FrameCategories, MackBoard
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
-    CartItemSerializer, CartItemUpdateSerializer, SavedItemSerializer, FrameCategoriesSerializer
+    CartItemSerializer, CartItemUpdateSerializer, SavedItemSerializer, FrameCategoriesSerializer, MackBoardSerializer
 )
 import json
 
@@ -549,3 +549,30 @@ def update_saved_items_status(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class MackBoardListCreateView(generics.ListCreateAPIView):
+    queryset = MackBoard.objects.all()
+    serializer_class = MackBoardSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create MackBoards")
+        serializer.save()
+
+class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = MackBoard.objects.all()
+    serializer_class = MackBoardSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update MackBoards")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete MackBoards")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete MackBoard with associated dependencies")

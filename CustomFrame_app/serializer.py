@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
-    CartItem, SavedItem, FrameCategories
+    CartItem, SavedItem, FrameCategories, MackBoard
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -235,4 +235,9 @@ class SavedItemSerializer(serializers.ModelSerializer):
         model = SavedItem
         fields = '__all__'
         read_only_fields = ['user', 'created_at', 'updated_at']
+
+class MackBoardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MackBoard
+        fields = '__all__'
 

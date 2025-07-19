@@ -182,8 +182,6 @@ class OrderItem(models.Model):
         return f"OrderItem for {self.frame.name} ({self.quantity})"
 
 
-from django.db import models
-
 class SavedItem(models.Model):
     user = models.ForeignKey(Login, on_delete=models.CASCADE)
     frame = models.ForeignKey('Frame', on_delete=models.SET_NULL, null=True, blank=True)
@@ -219,5 +217,13 @@ class SavedItem(models.Model):
     def __str__(self):
         return f"SavedItem {self.id} for user {self.user.username}"
 
+    
+
+class MackBoard(models.Model):
+    board_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='mack_board_images/', null=True, blank=True)
+
+    def __str__(self):
+        return self.board_name
 
 
