@@ -1,3 +1,4 @@
+import logging
 import os
 
 from django.conf import settings
@@ -7,6 +8,7 @@ from django.db.models import ProtectedError
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
+
 from rest_framework import status, generics, views, serializers, viewsets, permissions
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -17,11 +19,11 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, I
 from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem, SavedItem, FrameCategories, MackBoard
+    CartItem, FrameCategories, SavedItem, MackBoard
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
-    CartItemSerializer, CartItemUpdateSerializer, SavedItemSerializer, FrameCategoriesSerializer, MackBoardSerializer
+    CartItemSerializer, CartItemUpdateSerializer, FrameCategoriesSerializer, MackBoardSerializer, SavedItemSerializer,
 )
 import json
 
@@ -459,6 +461,8 @@ class CartItemDetailView(APIView):
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
+logger = logging.getLogger(__name__)
+
 class SavedItemView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -469,15 +473,19 @@ class SavedItemView(APIView):
             else:
                 items = SavedItem.objects.filter(user=request.user)
             serializer = SavedItemSerializer(items, many=True, context={'request': request})
-            return Response(serializer.data)
+            logger.debug(f"Fetched {len(items)} saved items for user {request.user.username}")
+            return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
+            logger.error(f"Error in GET /save-items/: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def post(self, request):
-        serializer = SavedItemSerializer(data=request.data)
+        logger.debug(f"Received POST data: {dict(request.data)}")
+        serializer = SavedItemSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.error(f"Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request, pk):
@@ -486,10 +494,12 @@ class SavedItemView(APIView):
                 item = SavedItem.objects.get(pk=pk)
             else:
                 item = SavedItem.objects.get(pk=pk, user=request.user)
-            serializer = SavedItemSerializer(item, data=request.data, partial=True)
+            logger.debug(f"Received PUT data for item {pk}: {dict(request.data)}")
+            serializer = SavedItemSerializer(item, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid():
                 serializer.save()
                 return Response(serializer.data)
+            logger.error(f"Serializer errors: {serializer.errors}")
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         except SavedItem.DoesNotExist:
             return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
@@ -576,3 +586,4 @@ class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
             instance.delete()
         except ProtectedError:
             raise ValidationError("Cannot delete MackBoard with associated dependencies")
+

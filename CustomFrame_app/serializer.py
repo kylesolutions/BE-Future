@@ -1,6 +1,9 @@
+import json
+import logging
+
 from rest_framework import serializers
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
-    CartItem, SavedItem, FrameCategories, MackBoard
+    CartItem, FrameCategories, MackBoard, SavedItemMackBoard, SavedItem
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -230,14 +233,78 @@ class CartItemSerializer(serializers.ModelSerializer):
             return self.context['request'].build_absolute_uri(obj.adjusted_image.url)
         return None
 
-class SavedItemSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = SavedItem
-        fields = '__all__'
-        read_only_fields = ['user', 'created_at', 'updated_at']
 
 class MackBoardSerializer(serializers.ModelSerializer):
     class Meta:
         model = MackBoard
         fields = '__all__'
+
+logger = logging.getLogger(__name__)
+
+class SavedItemMackBoardSerializer(serializers.ModelSerializer):
+    mack_board = MackBoardSerializer(read_only=True)
+    mack_board_id = serializers.PrimaryKeyRelatedField(
+        queryset=MackBoard.objects.all(),
+        source='mack_board',
+        write_only=True,
+        required=True
+    )
+    width = serializers.IntegerField(min_value=0, default=20, required=False)
+
+    class Meta:
+        model = SavedItemMackBoard
+        fields = ['mack_board', 'mack_board_id', 'width']
+
+    def validate(self, attrs):
+        logger.debug(f"SavedItemMackBoardSerializer attrs: {attrs}")
+        return attrs
+
+class SavedItemSerializer(serializers.ModelSerializer):
+    frame = serializers.PrimaryKeyRelatedField(queryset=Frame.objects.all(), allow_null=True)
+    mack_boards = SavedItemMackBoardSerializer(many=True, required=False, allow_null=True)
+
+    class Meta:
+        model = SavedItem
+        fields = [
+            'id', 'user', 'original_image', 'cropped_image', 'adjusted_image', 'frame',
+            'color_variant', 'size_variant', 'finish_variant', 'hanging_variant',
+            'print_width', 'print_height', 'print_unit', 'media_type', 'paper_type',
+            'fit', 'border_depth', 'border_color', 'border_unit','status',
+            'frame_depth', 'custom_frame_color', 'custom_width', 'custom_height',
+            'transform_x', 'transform_y', 'scale', 'rotation', 'total_price', 'mack_boards',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['user', 'created_at', 'updated_at']
+
+    def validate_mack_boards(self, value):
+        logger.debug(f"Raw mack_boards value: {value}")
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                raise serializers.ValidationError("Invalid JSON format for mack_boards")
+        if value is None or value == []:
+            return []
+        for item in value:
+            if not item.get('mack_board_id'):
+                raise serializers.ValidationError({"mack_board_id": "This field is required."})
+        return value
+
+    def create(self, validated_data):
+        mack_boards_data = validated_data.pop('mack_boards', [])
+        logger.debug(f"Creating with mack_boards_data: {mack_boards_data}")
+        saved_item = SavedItem.objects.create(user=self.context['request'].user, **validated_data)
+        for mb_data in mack_boards_data:
+            SavedItemMackBoard.objects.create(saved_item=saved_item, **mb_data)
+        return saved_item
+
+    def update(self, instance, validated_data):
+        mack_boards_data = validated_data.pop('mack_boards', None)
+        logger.debug(f"Updating with mack_boards_data: {mack_boards_data}")
+        instance = super().update(instance, validated_data)
+        if mack_boards_data is not None:
+            instance.saveditemmackboard_set.all().delete()
+            for mb_data in mack_boards_data:
+                SavedItemMackBoard.objects.create(saved_item=instance, **mb_data)
+        return instance
 

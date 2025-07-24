@@ -182,6 +182,22 @@ class OrderItem(models.Model):
         return f"OrderItem for {self.frame.name} ({self.quantity})"
 
 
+class MackBoard(models.Model):
+    board_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='mack_board_images/', null=True, blank=True)
+    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return self.board_name
+
+class SavedItemMackBoard(models.Model):
+    saved_item = models.ForeignKey('SavedItem', on_delete=models.CASCADE)
+    mack_board = models.ForeignKey(MackBoard, on_delete=models.CASCADE)
+    width = models.IntegerField(null=True, blank=True, default=20)
+
+    def __str__(self):
+        return f"{self.mack_board.board_name} for SavedItem {self.saved_item.id}"
+
 class SavedItem(models.Model):
     user = models.ForeignKey(Login, on_delete=models.CASCADE)
     frame = models.ForeignKey('Frame', on_delete=models.SET_NULL, null=True, blank=True)
@@ -189,6 +205,7 @@ class SavedItem(models.Model):
     size_variant = models.ForeignKey('SizeVariant', on_delete=models.SET_NULL, null=True, blank=True)
     finish_variant = models.ForeignKey('FinishingVariant', on_delete=models.SET_NULL, null=True, blank=True)
     hanging_variant = models.ForeignKey('FrameHangVariant', on_delete=models.SET_NULL, null=True, blank=True)
+    mack_boards = models.ManyToManyField(MackBoard, through='SavedItemMackBoard', blank=True)  # Updated to use through model
     custom_width = models.FloatField(null=True, blank=True)
     custom_height = models.FloatField(null=True, blank=True)
     transform_x = models.FloatField(default=0)
@@ -199,7 +216,6 @@ class SavedItem(models.Model):
     adjusted_image = models.ImageField(upload_to='adjusted_images/', null=True, blank=True)
     original_image = models.ImageField(upload_to='original_images/', null=True, blank=True)
     cropped_image = models.ImageField(upload_to='cropped_images/', null=True, blank=True)
-    # Print-related fields
     print_width = models.FloatField(null=True, blank=True)
     print_height = models.FloatField(null=True, blank=True)
     print_unit = models.CharField(max_length=10, choices=[('inches', 'Inches'), ('cm', 'Cm')], default='inches')
@@ -208,22 +224,16 @@ class SavedItem(models.Model):
     fit = models.CharField(max_length=20, choices=[('borderless', 'Borderless'), ('bordered', 'Bordered')], default='borderless')
     border_depth = models.IntegerField(null=True, blank=True, default=0)
     border_color = models.CharField(max_length=7, default='#ffffff')
+    border_unit = models.CharField(max_length=50, blank=True, null=True)
     frame_depth = models.IntegerField(null=True, blank=True, default=0)
+    custom_frame_color = models.CharField(max_length=7, blank=True, null=True)
     status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('paid', 'Paid')], default='pending')
-    total_price = models.DecimalField(null=True,max_digits=10, decimal_places=2)
+    total_price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"SavedItem {self.id} for user {self.user.username}"
 
-    
-
-class MackBoard(models.Model):
-    board_name = models.CharField(max_length=100)
-    image = models.ImageField(upload_to='mack_board_images/', null=True, blank=True)
-
-    def __str__(self):
-        return self.board_name
 
 
