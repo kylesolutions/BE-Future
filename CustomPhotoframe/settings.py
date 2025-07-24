@@ -147,7 +147,8 @@ AUTH_USER_MODEL='CustomFrame_app.Login'
 
 CORS_ORIGIN_WHITELIST = (
   'http://localhost:3000',
-    'http://localhost:5173'
+    'http://localhost:5173',
+    'http://82.180.146.4'
 )
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -161,6 +162,7 @@ CORS_ALLOW_HEADERS = ['Authorization', 'Content-Type']
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
+    "http://82.180.146.4"
 ]
 
 MEDIA_URL = '/media/'
