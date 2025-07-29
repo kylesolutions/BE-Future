@@ -246,12 +246,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 class SavedItemMackBoardSerializer(serializers.ModelSerializer):
+    mack_board = serializers.PrimaryKeyRelatedField(queryset=MackBoard.objects.all())
+
     class Meta:
         model = SavedItemMackBoard
         fields = ['mack_board', 'width', 'color']
         extra_kwargs = {
             'color': {'required': False, 'allow_blank': True},
         }
+
     def validate_mack_board(self, value):
         logger.debug(f"Validating mack_board: {value}")
         if not MackBoard.objects.filter(id=value.id).exists():
@@ -259,25 +262,34 @@ class SavedItemMackBoardSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Invalid MackBoard ID")
         return value
 
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        # Include mack_board details in the response
+        representation['mack_board'] = {
+            'id': instance.mack_board.id,
+            'board_name': instance.mack_board.board_name
+        }
+        return representation
+
 class SavedItemSerializer(serializers.ModelSerializer):
     mack_boards_data = SavedItemMackBoardSerializer(many=True, write_only=True, required=False)
+    frame = FrameSerializer(read_only=True)  # Use FrameSerializer for frame
+    color_variant = ColorVariantSerializer(read_only=True)
+    size_variant = SizeVariantSerializer(read_only=True)
+    finish_variant = FinishingVariantSerializer(read_only=True)
+    hanging_variant = HangingsVariantSerializer(read_only=True)  # Match field name
+    mack_boards = SavedItemMackBoardSerializer(many=True, read_only=True)
 
     class Meta:
         model = SavedItem
         fields = '__all__'
-
-    def get(self, request):
-        try:
-            if request.user.is_staff or request.user.is_superuser:
-                items = SavedItem.objects.all()
-            else:
-                items = SavedItem.objects.filter(user=request.user)
-            serializer = SavedItemSerializer(items, many=True, context={'request': request})
-            logger.debug(f"Fetched {len(items)} saved items for user {request.user.username}")
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except Exception as e:
-            logger.error(f"Error in GET /save-items/: {str(e)}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        extra_kwargs = {
+            'frame': {'required': False},
+            'color_variant': {'required': False},
+            'size_variant': {'required': False},
+            'finish_variant': {'required': False},
+            'hanging_variant': {'required': False},
+        }
 
     def create(self, validated_data):
         mack_boards_data = validated_data.pop('mack_boards_data', [])
@@ -286,17 +298,16 @@ class SavedItemSerializer(serializers.ModelSerializer):
             SavedItemMackBoard.objects.create(saved_item=saved_item, **mb_data)
         return saved_item
 
-
     def update(self, instance, validated_data):
         logger.debug(f"Updating SavedItem {instance.id} with data: {validated_data}")
-        mack_boards_data = validated_data.pop('mack_boards', None)
+        mack_boards_data = validated_data.pop('mack_boards_data', None)  # Fix: Use mack_boards_data
         if 'user' not in validated_data:
             validated_data['user'] = instance.user
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         if mack_boards_data is not None:
-            instance.mack_boards.clear()  # Clear existing mack boards
+            instance.mack_boards.clear()
             for mack_board_data in mack_boards_data:
                 logger.debug(f"Updating SavedItemMackBoard: {mack_board_data}")
                 SavedItemMackBoard.objects.create(saved_item=instance, **mack_board_data)
