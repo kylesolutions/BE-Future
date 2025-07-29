@@ -147,8 +147,7 @@ AUTH_USER_MODEL='CustomFrame_app.Login'
 
 CORS_ORIGIN_WHITELIST = (
   'http://localhost:3000',
-    'http://localhost:5173',
-    'http://82.180.146.4'
+    'http://localhost:5173'
 )
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
@@ -158,11 +157,10 @@ SIMPLE_JWT = {
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = True  # Or specify allowed origins, e.g., CORS_ALLOWED_ORIGINS = ['http://localhost:3000']
 CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
-CORS_ALLOW_HEADERS = ['Authorization', 'Content-Type']
+CORS_ALLOW_HEADERS = ['Authorization', 'Content-Type','content-type','x-csrftoken']
 
 CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://82.180.146.4"
+    "http://localhost:5173"
 ]
 
 MEDIA_URL = '/media/'
@@ -177,3 +175,11 @@ EMAIL_HOST_USER = 'jayalakshmikyle@gmail.com'
 EMAIL_HOST_PASSWORD = 'nuno iufh tgxh zesf'  # Generate from Google Account
 DEFAULT_FROM_EMAIL = 'jayalakshmikyle@gmail.com'
 
+FILE_UPLOAD_HANDLERS = [
+    'django.core.files.uploadhandler.MemoryFileUploadHandler',
+    'django.core.files.uploadhandler.TemporaryFileUploadHandler',
+]
+
+# settings.py
+DATA_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024 * 20  # 20MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024 * 20  # 20MB

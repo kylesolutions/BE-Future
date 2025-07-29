@@ -5,12 +5,14 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     ColorVariantDetailView, SizeVariantDetailView, FinishingVariantDetailView, HangingVariantDetailView, UserManageView, \
     FrameDetailView, BulkVariantCreateView, UploadCroppedImageView, AddToCartView, CartDetailView, CartItemDetailView, \
     upload_image, UserRegistrationView, FrameCategoriesListCreateView, \
-    FrameListCreateView, FrameCategoriesDetailView, SavedItemView, MackBoardListCreateView, MackBoardDetailView
+    FrameListCreateView, FrameCategoriesDetailView, SavedItemView, MackBoardListCreateView, MackBoardDetailView, \
+    CurrentUserView
 
 urlpatterns = [
     path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
     path('api/user_login/', views.user_login, name='user_login'),
     path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/current-user/', CurrentUserView.as_view(), name='current_user'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('mack_boards/', MackBoardListCreateView.as_view(), name='mack_board-list-create'),
     path('mack_boards/<int:pk>/', MackBoardDetailView.as_view(), name='mack_board-detail'),

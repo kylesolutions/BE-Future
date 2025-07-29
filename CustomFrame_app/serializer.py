@@ -1,7 +1,8 @@
 import json
 import logging
+from rest_framework import serializers, status
+from rest_framework.response import Response
 
-from rest_framework import serializers
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
     CartItem, FrameCategories, MackBoard, SavedItemMackBoard, SavedItem
 
@@ -239,72 +240,65 @@ class MackBoardSerializer(serializers.ModelSerializer):
         model = MackBoard
         fields = '__all__'
 
+
+import logging
+
 logger = logging.getLogger(__name__)
 
 class SavedItemMackBoardSerializer(serializers.ModelSerializer):
-    mack_board = MackBoardSerializer(read_only=True)
-    mack_board_id = serializers.PrimaryKeyRelatedField(
-        queryset=MackBoard.objects.all(),
-        source='mack_board',
-        write_only=True,
-        required=True
-    )
-    width = serializers.IntegerField(min_value=0, default=20, required=False)
-
     class Meta:
         model = SavedItemMackBoard
-        fields = ['mack_board', 'mack_board_id', 'width']
-
-    def validate(self, attrs):
-        logger.debug(f"SavedItemMackBoardSerializer attrs: {attrs}")
-        return attrs
+        fields = ['mack_board', 'width', 'color']
+        extra_kwargs = {
+            'color': {'required': False, 'allow_blank': True},
+        }
+    def validate_mack_board(self, value):
+        logger.debug(f"Validating mack_board: {value}")
+        if not MackBoard.objects.filter(id=value.id).exists():
+            logger.error(f"MackBoard with id {value.id} does not exist")
+            raise serializers.ValidationError("Invalid MackBoard ID")
+        return value
 
 class SavedItemSerializer(serializers.ModelSerializer):
-    frame = serializers.PrimaryKeyRelatedField(queryset=Frame.objects.all(), allow_null=True)
-    mack_boards = SavedItemMackBoardSerializer(many=True, required=False, allow_null=True)
+    mack_boards_data = SavedItemMackBoardSerializer(many=True, write_only=True, required=False)
 
     class Meta:
         model = SavedItem
-        fields = [
-            'id', 'user', 'original_image', 'cropped_image', 'adjusted_image', 'frame',
-            'color_variant', 'size_variant', 'finish_variant', 'hanging_variant',
-            'print_width', 'print_height', 'print_unit', 'media_type', 'paper_type',
-            'fit', 'border_depth', 'border_color', 'border_unit','status',
-            'frame_depth', 'custom_frame_color', 'custom_width', 'custom_height',
-            'transform_x', 'transform_y', 'scale', 'rotation', 'total_price', 'mack_boards',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['user', 'created_at', 'updated_at']
+        fields = '__all__'
 
-    def validate_mack_boards(self, value):
-        logger.debug(f"Raw mack_boards value: {value}")
-        if isinstance(value, str):
-            try:
-                value = json.loads(value)
-            except json.JSONDecodeError:
-                raise serializers.ValidationError("Invalid JSON format for mack_boards")
-        if value is None or value == []:
-            return []
-        for item in value:
-            if not item.get('mack_board_id'):
-                raise serializers.ValidationError({"mack_board_id": "This field is required."})
-        return value
+    def get(self, request):
+        try:
+            if request.user.is_staff or request.user.is_superuser:
+                items = SavedItem.objects.all()
+            else:
+                items = SavedItem.objects.filter(user=request.user)
+            serializer = SavedItemSerializer(items, many=True, context={'request': request})
+            logger.debug(f"Fetched {len(items)} saved items for user {request.user.username}")
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error in GET /save-items/: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def create(self, validated_data):
-        mack_boards_data = validated_data.pop('mack_boards', [])
-        logger.debug(f"Creating with mack_boards_data: {mack_boards_data}")
-        saved_item = SavedItem.objects.create(user=self.context['request'].user, **validated_data)
+        mack_boards_data = validated_data.pop('mack_boards_data', [])
+        saved_item = super().create(validated_data)
         for mb_data in mack_boards_data:
             SavedItemMackBoard.objects.create(saved_item=saved_item, **mb_data)
         return saved_item
 
+
     def update(self, instance, validated_data):
+        logger.debug(f"Updating SavedItem {instance.id} with data: {validated_data}")
         mack_boards_data = validated_data.pop('mack_boards', None)
-        logger.debug(f"Updating with mack_boards_data: {mack_boards_data}")
-        instance = super().update(instance, validated_data)
+        if 'user' not in validated_data:
+            validated_data['user'] = instance.user
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
         if mack_boards_data is not None:
-            instance.saveditemmackboard_set.all().delete()
-            for mb_data in mack_boards_data:
-                SavedItemMackBoard.objects.create(saved_item=instance, **mb_data)
+            instance.mack_boards.clear()  # Clear existing mack boards
+            for mack_board_data in mack_boards_data:
+                logger.debug(f"Updating SavedItemMackBoard: {mack_board_data}")
+                SavedItemMackBoard.objects.create(saved_item=instance, **mack_board_data)
         return instance
 

@@ -1,18 +1,20 @@
 import logging
 import os
+from typing import Any
 
 from django.conf import settings
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.core.mail import send_mail
 from django.db.models import ProtectedError
 from django.http import JsonResponse, HttpResponse
+from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 
 from rest_framework import status, generics, views, serializers, viewsets, permissions
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError, PermissionDenied
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly
@@ -92,6 +94,21 @@ def user_login(request):
         else:
             return JsonResponse({'status': False, 'result': 'Invalid username or password'}, status=400)
     return JsonResponse({'status': False, 'result': 'Invalid request method'}, status=405)
+
+class CurrentUserView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        return Response({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'name': user.name,
+            'phone': user.phone,
+            'type': user.role,  # Map role to type
+            'is_blocked': user.is_blocked,
+        })
 
 class FrameCategoriesListCreateView(generics.ListCreateAPIView):
     queryset = FrameCategories.objects.all()
@@ -460,13 +477,14 @@ class CartItemDetailView(APIView):
         except CartItem.DoesNotExist:
             return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
-
 logger = logging.getLogger(__name__)
 
+@method_decorator(csrf_exempt, name='dispatch')
 class SavedItemView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser)
 
-    def get(self, request):
+    def get(self, request, *args, **kwargs):
         try:
             if request.user.is_staff or request.user.is_superuser:
                 items = SavedItem.objects.all()
@@ -479,30 +497,30 @@ class SavedItemView(APIView):
             logger.error(f"Error in GET /save-items/: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def post(self, request):
-        logger.debug(f"Received POST data: {dict(request.data)}")
+    def post(self, request, *args, **kwargs):
+        logger.debug(f"POST request data: {request.data}")
         serializer = SavedItemSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save()
+            item = serializer.save()
+            logger.debug(f"SavedItem created: {item.id}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         logger.error(f"Serializer errors: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def put(self, request, pk):
+    def put(self, request, pk, *args, **kwargs):
+        logger.debug(f"PUT request data for pk {pk}: {request.data}")
         try:
-            if request.user.is_staff or request.user.is_superuser:
-                item = SavedItem.objects.get(pk=pk)
-            else:
-                item = SavedItem.objects.get(pk=pk, user=request.user)
-            logger.debug(f"Received PUT data for item {pk}: {dict(request.data)}")
-            serializer = SavedItemSerializer(item, data=request.data, partial=True, context={'request': request})
-            if serializer.is_valid():
-                serializer.save()
-                return Response(serializer.data)
-            logger.error(f"Serializer errors: {serializer.errors}")
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            instance = SavedItem.objects.get(pk=pk)
         except SavedItem.DoesNotExist:
+            logger.error(f"SavedItem {pk} not found")
             return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = SavedItemSerializer(instance, data=request.data, partial=True, context={'request': request})
+        if serializer.is_valid():
+            item = serializer.save()
+            logger.debug(f"SavedItem {pk} updated")
+            return Response(serializer.data)
+        logger.error(f"Serializer errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
         try:

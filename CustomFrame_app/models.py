@@ -1,6 +1,11 @@
+import os
+import uuid
+
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils.deconstruct import deconstructible
+
 
 class Login(AbstractUser):
     is_user = models.BooleanField(default=False)
@@ -194,9 +199,21 @@ class SavedItemMackBoard(models.Model):
     saved_item = models.ForeignKey('SavedItem', on_delete=models.CASCADE)
     mack_board = models.ForeignKey(MackBoard, on_delete=models.CASCADE)
     width = models.IntegerField(null=True, blank=True, default=20)
+    color = models.CharField(max_length=7, null=True, blank=True)
 
     def __str__(self):
         return f"{self.mack_board.board_name} for SavedItem {self.saved_item.id}"
+
+
+@deconstructible
+class UploadToShortName:
+    def __init__(self, path):
+        self.path = path
+
+    def __call__(self, instance, filename):
+        ext = filename.split('.')[-1]
+        new_filename = f"{uuid.uuid4().hex[:8]}.{ext}"
+        return os.path.join(self.path, new_filename)
 
 class SavedItem(models.Model):
     user = models.ForeignKey(Login, on_delete=models.CASCADE)
@@ -214,8 +231,8 @@ class SavedItem(models.Model):
     rotation = models.FloatField(default=0)
     frame_rotation = models.FloatField(default=0)
     adjusted_image = models.ImageField(upload_to='adjusted_images/', null=True, blank=True)
-    original_image = models.ImageField(upload_to='original_images/', null=True, blank=True)
-    cropped_image = models.ImageField(upload_to='cropped_images/', null=True, blank=True)
+    original_image = models.ImageField(upload_to=UploadToShortName('original_images/'), blank=True, null=True)
+    cropped_image = models.ImageField(upload_to=UploadToShortName('cropped_images/'), blank=True, null=True)
     print_width = models.FloatField(null=True, blank=True)
     print_height = models.FloatField(null=True, blank=True)
     print_unit = models.CharField(max_length=10, choices=[('inches', 'Inches'), ('cm', 'Cm')], default='inches')
