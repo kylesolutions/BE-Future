@@ -6,7 +6,8 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     FrameDetailView, BulkVariantCreateView, UploadCroppedImageView, AddToCartView, CartDetailView, CartItemDetailView, \
     upload_image, UserRegistrationView, FrameCategoriesListCreateView, \
     FrameListCreateView, FrameCategoriesDetailView, SavedItemView, MackBoardListCreateView, MackBoardDetailView, \
-    CurrentUserView
+    CurrentUserView, MugListCreateView, CapListCreateView, TshirtListCreateView, TileListCreateView, PenListCreateView, \
+    GiftOrderCreateView
 
 urlpatterns = [
     path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
@@ -37,4 +38,14 @@ urlpatterns = [
     path('save-items/<int:pk>/', SavedItemView.as_view(), name='save_item_detail'),
     path('send-order-confirmation/',views.send_order_confirmation,name='send-order-confirmation'),
     path('update-saved-items-status/', views.update_saved_items_status, name='update-saved-items-status'),
+    path('mugs/', MugListCreateView.as_view(), name='mug-list-create'),
+    path('caps/', CapListCreateView.as_view(), name='cap-list-create'),
+    path('tshirts/', TshirtListCreateView.as_view(), name='tshirt-list-create'),
+    path('tiles/', TileListCreateView.as_view(), name='tile-list-create'),
+    path('pens/', PenListCreateView.as_view(), name='pen-list-create'),
+    path('gift-orders/', GiftOrderCreateView.as_view(), name='gift-order-create'),
+    path('gift-orders/list/', views.GiftOrderListView.as_view(), name='gift-order-list'),
+    path('gift-orders/<int:pk>/', views.GiftOrderCreateView.as_view(), name='gift-order-delete'),
+    path('update-gift-orders-status/', views.UpdateGiftOrdersStatusView.as_view(), name='update-gift-orders-status'),
 ]
+

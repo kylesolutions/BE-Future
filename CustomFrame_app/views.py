@@ -1,7 +1,5 @@
 import logging
 import os
-from typing import Any
-
 from django.conf import settings
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.core.mail import send_mail
@@ -10,7 +8,6 @@ from django.http import JsonResponse, HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
-
 from rest_framework import status, generics, views, serializers, viewsets, permissions
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError, PermissionDenied
@@ -21,11 +18,12 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, I
 from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem, FrameCategories, SavedItem, MackBoard
+    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, GiftOrder
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
     CartItemSerializer, CartItemUpdateSerializer, FrameCategoriesSerializer, MackBoardSerializer, SavedItemSerializer,
+    MugSerializer, CapSerializer, TshirtSerializer, TileSerializer, PenSerializer, GiftOrderSerializer,
 )
 import json
 
@@ -445,6 +443,34 @@ class AddToCartView(APIView):
             return Response(CartItemSerializer(cart_item, context={'request': request}).data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class MackBoardListCreateView(generics.ListCreateAPIView):
+    queryset = MackBoard.objects.all()
+    serializer_class = MackBoardSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create MackBoards")
+        serializer.save()
+
+class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = MackBoard.objects.all()
+    serializer_class = MackBoardSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update MackBoards")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete MackBoards")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete MackBoard with associated dependencies")
+
 class CartDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -553,7 +579,10 @@ def send_order_confirmation(request):
         subject = f"Order Confirmation for {customer_name}"
         plain_message = f"Dear {customer_name},\n\nYour order has been confirmed!\n\nOrder Details:\n"
         for item in order_details:
-            plain_message += f"- Frame: {item['frame']}, Size: {item['printSize']}, Price: ${item['price']}\n"
+            if item.get('type') == 'gift':
+                plain_message += f"- Gift Item: {item['content_type']} (ID: {item['object_id']}), Price: ${item['price']}\n"
+            else:
+                plain_message += f"- Frame: {item['frame']}, Size: {item['printSize']}, Price: ${item['price']}\n"
         plain_message += f"\nTotal Cost: ${total_cost}\nPhone: {customer_phone}\n\nThank you for your order!"
 
         send_mail(
@@ -563,8 +592,9 @@ def send_order_confirmation(request):
             recipient_list=[customer_email],
             fail_silently=False,
         )
-        # Update status of all user's saved items to 'paid'
+        # Update status of all user's saved items and gift orders to 'paid'
         SavedItem.objects.filter(user=request.user).update(status='paid')
+        GiftOrder.objects.filter(user=request.user).update(status='paid')
         return JsonResponse({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -577,31 +607,204 @@ def update_saved_items_status(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class MackBoardListCreateView(generics.ListCreateAPIView):
-    queryset = MackBoard.objects.all()
-    serializer_class = MackBoardSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+class UpdateGiftOrdersStatusView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            order_ids = request.data.get('orderIds', [])
+            if not order_ids:
+                return Response({"error": "No order IDs provided"}, status=status.HTTP_400_BAD_REQUEST)
+            GiftOrder.objects.filter(id__in=order_ids, user=request.user).update(status='paid')
+            logger.info(f"Updated status to 'paid' for GiftOrder IDs {order_ids} for user {request.user.username}")
+            return Response({"message": "Gift order statuses updated"}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error updating gift order statuses: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+class MugListCreateView(generics.ListCreateAPIView):
+    queryset = Mug.objects.all()
+    serializer_class = MugSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def perform_create(self, serializer):
         if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can create MackBoards")
+            raise PermissionDenied("Only admins can create Mugs")
         serializer.save()
 
-class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = MackBoard.objects.all()
-    serializer_class = MackBoardSerializer
-    permission_classes = [permissions.IsAuthenticated]
+class MugDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Mug.objects.all()
+    serializer_class = MugSerializer
+    permission_classes = [IsAuthenticated]
 
     def perform_update(self, serializer):
         if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can update MackBoards")
+            raise PermissionDenied("Only admins can update Mugs")
         serializer.save()
 
     def perform_destroy(self, instance):
         if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can delete MackBoards")
+            raise PermissionDenied("Only admins can delete Mugs")
         try:
             instance.delete()
         except ProtectedError:
-            raise ValidationError("Cannot delete MackBoard with associated dependencies")
+            raise ValidationError("Cannot delete Mug with associated dependencies")
 
+class CapListCreateView(generics.ListCreateAPIView):
+    queryset = Cap.objects.all()
+    serializer_class = CapSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create Caps")
+        serializer.save()
+
+class CapDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Cap.objects.all()
+    serializer_class = CapSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update Caps")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete Caps")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete Cap with associated dependencies")
+
+class TshirtListCreateView(generics.ListCreateAPIView):
+    queryset = Tshirt.objects.all()
+    serializer_class = TshirtSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create Tshirts")
+        serializer.save()
+
+class TshirtDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Tshirt.objects.all()
+    serializer_class = TshirtSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update Tshirts")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete Tshirts")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete Tshirt with associated dependencies")
+
+class TileListCreateView(generics.ListCreateAPIView):
+    queryset = Tile.objects.all()
+    serializer_class = TileSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create Tiles")
+        serializer.save()
+
+class TileDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Tile.objects.all()
+    serializer_class = TileSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update Tiles")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete Tiles")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete Tile with associated dependencies")
+
+class PenListCreateView(generics.ListCreateAPIView):
+    queryset = Pens.objects.all()
+    serializer_class = PenSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create Pens")
+        serializer.save()
+
+class PenDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Pens.objects.all()
+    serializer_class = PenSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_update(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can update Pens")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can delete Pens")
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ValidationError("Cannot delete Pen with associated dependencies")
+
+
+class GiftOrderCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        logger.debug(f"Received POST data: {request.data}")
+        serializer = GiftOrderSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            logger.info(f"GiftOrder created successfully for user {request.user.username}")
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        logger.error(f"Serializer errors: {serializer.errors}")
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        try:
+            if request.user.is_staff or request.user.is_superuser:
+                item = GiftOrder.objects.get(pk=pk)
+            else:
+                item = GiftOrder.objects.get(pk=pk, user=request.user)
+            item.delete()
+            logger.info(f"GiftOrder {pk} deleted by user {request.user.username}")
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except GiftOrder.DoesNotExist:
+            logger.error(f"GiftOrder {pk} not found")
+            return Response({"error": "Gift order not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class GiftOrderListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = GiftOrderSerializer
+
+    def get_queryset(self):
+        logger.debug(f"Fetching gift orders for user {self.request.user.username}")
+        if self.request.user.is_staff or self.request.user.is_superuser:
+            return GiftOrder.objects.all().order_by('-created_at')
+        return GiftOrder.objects.filter(user=self.request.user, status='pending').order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True, context={'request': request})
+        logger.info(f"Retrieved {len(queryset)} gift orders for user {request.user.username}")
+        return Response(serializer.data)

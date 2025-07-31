@@ -1,10 +1,12 @@
 import json
 import logging
+
+from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers, status
 from rest_framework.response import Response
 
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
-    CartItem, FrameCategories, MackBoard, SavedItemMackBoard, SavedItem
+    CartItem, FrameCategories, MackBoard, SavedItemMackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, GiftOrder
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -313,3 +315,99 @@ class SavedItemSerializer(serializers.ModelSerializer):
                 SavedItemMackBoard.objects.create(saved_item=instance, **mack_board_data)
         return instance
 
+
+class TshirtSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tshirt
+        fields = ['id', 'tshirt_name', 'price', 'image']
+
+class MugSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Mug
+        fields = ['id', 'mug_name', 'price', 'image']
+
+class CapSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Cap
+        fields = ['id', 'cap_name', 'price', 'image']
+
+class TileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tile
+        fields = ['id', 'tile_name', 'price', 'image']
+
+class PenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Pens
+        fields = ['id', 'pen_name', 'price', 'image']
+
+class GiftOrderSerializer(serializers.ModelSerializer):
+    content_type = serializers.CharField()
+
+    class Meta:
+        model = GiftOrder
+        fields = [
+            'id', 'user', 'content_type', 'object_id', 'uploaded_image',
+            'image_position_x', 'image_position_y', 'image_scale_x',
+            'image_scale_y', 'image_rotation', 'total_price', 'created_at', 'status'
+        ]
+        read_only_fields = ['id', 'user', 'created_at']
+
+    def validate_content_type(self, value):
+        valid_models = ['mug', 'tshirt', 'cap', 'tile', 'pen']
+        if not value:
+            raise serializers.ValidationError("Content type is required.")
+        if value.lower() not in valid_models:
+            raise serializers.ValidationError(
+                f"Invalid content type: '{value}'. Must be one of: {', '.join(valid_models)}"
+            )
+        try:
+            content_type = ContentType.objects.get(model=value.lower())
+            return content_type
+        except ContentType.DoesNotExist:
+            raise serializers.ValidationError(
+                f"Content type '{value}' does not exist in the database."
+            )
+
+    def validate_object_id(self, value):
+        if not value:
+            raise serializers.ValidationError("Object ID is required.")
+        try:
+            value = int(value)
+            if value <= 0:
+                raise serializers.ValidationError("Object ID must be a positive integer.")
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("Object ID must be a valid integer.")
+        return value
+
+    def validate_total_price(self, value):
+        if value is None:
+            raise serializers.ValidationError("Total price is required.")
+        try:
+            value = float(value)
+            if value <= 0:
+                raise serializers.ValidationError("Total price must be greater than zero.")
+        except (TypeError, ValueError):
+            raise serializers.ValidationError("Total price must be a valid number.")
+        return value
+
+    def validate(self, data):
+        content_type = data.get('content_type')
+        object_id = data.get('object_id')
+        if content_type and object_id:
+            try:
+                model_class = content_type.model_class()
+                if not model_class.objects.filter(id=object_id).exists():
+                    raise serializers.ValidationError({
+                        'object_id': f"No {content_type.model} found with ID {object_id}."
+                    })
+            except Exception as e:
+                raise serializers.ValidationError({
+                    'object_id': f"Error validating object ID: {str(e)}"
+                })
+        return data
+
+    def create(self, validated_data):
+        content_type = validated_data.pop('content_type')
+        validated_data['content_type'] = content_type
+        return super().create(validated_data)

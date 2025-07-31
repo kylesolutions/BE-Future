@@ -2,8 +2,11 @@ import os
 import uuid
 
 from django.contrib.auth.models import AbstractUser
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.db.models import CharField
 from django.utils.deconstruct import deconstructible
 
 
@@ -251,4 +254,51 @@ class SavedItem(models.Model):
         return f"SavedItem {self.id} for user {self.user.username}"
 
 
+class Mug(models.Model):
+    mug_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='mug/', null=True, blank=True)
+    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
 
+class Cap(models.Model):
+    cap_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='cap/', null=True, blank=True)
+    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+
+class Tshirt(models.Model):
+    tshirt_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='tshirt/', null=True, blank=True)
+    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+
+class Tile(models.Model):
+    tile_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='tile/', null=True, blank=True)
+    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+
+class Pens(models.Model):
+    pen_name = models.CharField(max_length=100)
+    image = models.ImageField(upload_to='pen/', null=True, blank=True)
+    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+
+
+class GiftOrder(models.Model):
+    user = models.ForeignKey(Login, on_delete=models.CASCADE, related_name='gift_orders')
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, limit_choices_to={
+        'model__in': ['mug', 'tshirt', 'cap', 'tile', 'pens']
+    })
+    object_id = models.PositiveIntegerField()
+    item = GenericForeignKey('content_type', 'object_id')
+    uploaded_image = models.ImageField(upload_to='order_images/', blank=True, null=True)
+    image_position_x = models.FloatField(default=0)
+    image_position_y = models.FloatField(default=0)
+    image_scale_x = models.FloatField(default=1)
+    image_scale_y = models.FloatField(default=1)
+    image_rotation = models.FloatField(default=0)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, default='pending', choices=[
+        ('pending', 'Pending'),
+        ('paid', 'Paid'),
+    ])
+
+    def __str__(self):
+        return f"Order {self.id} by {self.user.username} - {self.content_type.model} {self.object_id}"
