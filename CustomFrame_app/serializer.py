@@ -1,12 +1,12 @@
 import json
-import logging
-
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers, status
 from rest_framework.response import Response
-
+import logging
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
-    CartItem, FrameCategories, MackBoard, SavedItemMackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, GiftOrder
+    CartItem, FrameCategories, MackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, \
+    MackBoardColorVariant, SavedItemMackBoard
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -236,51 +236,69 @@ class CartItemSerializer(serializers.ModelSerializer):
             return self.context['request'].build_absolute_uri(obj.adjusted_image.url)
         return None
 
+class MackBoardColorVariantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MackBoardColorVariant
+        fields = ['id', 'mack_board', 'color_name', 'image']
 
 class MackBoardSerializer(serializers.ModelSerializer):
+    color_variants = MackBoardColorVariantSerializer(many=True, read_only=True)
     class Meta:
         model = MackBoard
-        fields = '__all__'
+        fields = ['id', 'board_name', 'image', 'price', 'color_variants']
 
-
-import logging
 
 logger = logging.getLogger(__name__)
 
 class SavedItemMackBoardSerializer(serializers.ModelSerializer):
-    mack_board = serializers.PrimaryKeyRelatedField(queryset=MackBoard.objects.all())
+    mack_board = MackBoardSerializer(read_only=True)
+    mack_board_id = serializers.PrimaryKeyRelatedField(
+        queryset=MackBoard.objects.all(), source='mack_board', write_only=True, required=False, allow_null=True
+    )
+    mack_board_color = MackBoardColorVariantSerializer(read_only=True)
+    mack_board_color_id = serializers.PrimaryKeyRelatedField(
+        queryset=MackBoardColorVariant.objects.all(), source='mack_board_color', write_only=True, required=False, allow_null=True
+    )
 
     class Meta:
         model = SavedItemMackBoard
-        fields = ['mack_board', 'width', 'color']
-        extra_kwargs = {
-            'color': {'required': False, 'allow_blank': True},
-        }
+        fields = ['id', 'mack_board', 'mack_board_id', 'mack_board_color', 'mack_board_color_id', 'width', 'position']
 
     def validate_mack_board(self, value):
-        logger.debug(f"Validating mack_board: {value}")
-        if not MackBoard.objects.filter(id=value.id).exists():
+        if value and not MackBoard.objects.filter(id=value.id).exists():
             logger.error(f"MackBoard with id {value.id} does not exist")
             raise serializers.ValidationError("Invalid MackBoard ID")
         return value
 
-    def to_representation(self, instance):
-        representation = super().to_representation(instance)
-        # Include mack_board details in the response
-        representation['mack_board'] = {
-            'id': instance.mack_board.id,
-            'board_name': instance.mack_board.board_name
-        }
-        return representation
+    def validate_mack_board_color(self, value):
+        if value and not MackBoardColorVariant.objects.filter(id=value.id).exists():
+            logger.error(f"MackBoardColorVariant with id {value.id} does not exist")
+            raise serializers.ValidationError("Invalid MackBoardColorVariant ID")
+        return value
 
 class SavedItemSerializer(serializers.ModelSerializer):
-    mack_boards_data = SavedItemMackBoardSerializer(many=True, write_only=True, required=False)
-    frame = FrameSerializer(read_only=True)  # Use FrameSerializer for frame
+    frame = FrameSerializer(read_only=True)
+    frame_id = serializers.PrimaryKeyRelatedField(
+        queryset=Frame.objects.all(), source='frame', write_only=True, required=False, allow_null=True
+    )
     color_variant = ColorVariantSerializer(read_only=True)
+    color_variant_id = serializers.PrimaryKeyRelatedField(
+        queryset=ColorVariant.objects.all(), source='color_variant', write_only=True, required=False, allow_null=True
+    )
     size_variant = SizeVariantSerializer(read_only=True)
+    size_variant_id = serializers.PrimaryKeyRelatedField(
+        queryset=SizeVariant.objects.all(), source='size_variant', write_only=True, required=False, allow_null=True
+    )
     finish_variant = FinishingVariantSerializer(read_only=True)
-    hanging_variant = HangingsVariantSerializer(read_only=True)  # Match field name
+    finish_variant_id = serializers.PrimaryKeyRelatedField(
+        queryset=FinishingVariant.objects.all(), source='finish_variant', write_only=True, required=False, allow_null=True
+    )
+    hanging_variant = HangingsVariantSerializer(read_only=True)
+    hanging_variant_id = serializers.PrimaryKeyRelatedField(
+        queryset=FrameHangVariant.objects.all(), source='hanging_variant', write_only=True, required=False, allow_null=True
+    )
     mack_boards = SavedItemMackBoardSerializer(many=True, read_only=True)
+    mack_boards_data = serializers.CharField(write_only=True, required=False, allow_null=True, allow_blank=True)
 
     class Meta:
         model = SavedItem
@@ -293,53 +311,135 @@ class SavedItemSerializer(serializers.ModelSerializer):
             'hanging_variant': {'required': False},
         }
 
+    def validate_mack_boards_data(self, value):
+        if not value:
+            return []
+        try:
+            data = json.loads(value)
+            if not isinstance(data, list):
+                raise serializers.ValidationError("mack_boards_data must be a list of dictionaries")
+            for item in data:
+                if not isinstance(item, dict):
+                    raise serializers.ValidationError("Each item in mack_boards_data must be a dictionary")
+                if 'mack_board_id' in item and item['mack_board_id'] is not None:
+                    if not MackBoard.objects.filter(id=item['mack_board_id']).exists():
+                        raise serializers.ValidationError(f"Invalid MackBoard ID: {item['mack_board_id']}")
+                if 'mack_board_color_id' in item and item['mack_board_color_id'] is not None:
+                    if not MackBoardColorVariant.objects.filter(id=item['mack_board_color_id']).exists():
+                        raise serializers.ValidationError(f"Invalid MackBoardColorVariant ID: {item['mack_board_color_id']}")
+            return data
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON in mack_boards_data: {value}")
+            raise serializers.ValidationError("mack_boards_data must be a valid JSON string representing a list of dictionaries")
+
     def create(self, validated_data):
+        logger.debug(f"Creating SavedItem with data: {validated_data}")
         mack_boards_data = validated_data.pop('mack_boards_data', [])
-        saved_item = super().create(validated_data)
-        for mb_data in mack_boards_data:
-            SavedItemMackBoard.objects.create(saved_item=saved_item, **mb_data)
-        return saved_item
+        instance = super().create(validated_data)
+
+        # Create associated MackBoards
+        for index, mack_board_data in enumerate(mack_boards_data):
+            SavedItemMackBoard.objects.create(
+                saved_item=instance,
+                mack_board=MackBoard.objects.get(id=mack_board_data['mack_board_id']) if mack_board_data.get('mack_board_id') else None,
+                mack_board_color=MackBoardColorVariant.objects.get(id=mack_board_data['mack_board_color_id']) if mack_board_data.get('mack_board_color_id') else None,
+                width=mack_board_data.get('width', 20),
+                position=index
+            )
+
+        return instance
 
     def update(self, instance, validated_data):
         logger.debug(f"Updating SavedItem {instance.id} with data: {validated_data}")
-        mack_boards_data = validated_data.pop('mack_boards_data', None)  # Fix: Use mack_boards_data
+        mack_boards_data = validated_data.pop('mack_boards_data', None)
+
         if 'user' not in validated_data:
             validated_data['user'] = instance.user
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+
+        # Update the SavedItem instance
+        instance = super().update(instance, validated_data)
+
+        # Update MackBoards if provided
         if mack_boards_data is not None:
-            instance.mack_boards.clear()
-            for mack_board_data in mack_boards_data:
-                logger.debug(f"Updating SavedItemMackBoard: {mack_board_data}")
-                SavedItemMackBoard.objects.create(saved_item=instance, **mack_board_data)
+            # Delete existing MackBoards
+            instance.mack_boards.all().delete()
+            # Create new MackBoards
+            for index, mack_board_data in enumerate(mack_boards_data):
+                SavedItemMackBoard.objects.create(
+                    saved_item=instance,
+                    mack_board=MackBoard.objects.get(id=mack_board_data['mack_board_id']) if mack_board_data.get('mack_board_id') else None,
+                    mack_board_color=MackBoardColorVariant.objects.get(id=mack_board_data['mack_board_color_id']) if mack_board_data.get('mack_board_color_id') else None,
+                    width=mack_board_data.get('width', 20),
+                    position=index
+                )
+
         return instance
 
 
-class TshirtSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Tshirt
-        fields = ['id', 'tshirt_name', 'price', 'image']
-
 class MugSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(allow_null=True, required=False)
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Mug
-        fields = ['id', 'mug_name', 'price', 'image']
+        fields = ['id', 'mug_name', 'price', 'image', 'image_url']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return f"{settings.MEDIA_URL}{obj.image}"
+        return None
 
 class CapSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(allow_null=True, required=False)
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Cap
-        fields = ['id', 'cap_name', 'price', 'image']
+        fields = ['id', 'cap_name', 'price', 'image', 'image_url']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return f"{settings.MEDIA_URL}{obj.image}"
+        return None
+
+class TshirtSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(allow_null=True, required=False)
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Tshirt
+        fields = ['id', 'tshirt_name', 'price', 'image', 'image_url']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return f"{settings.MEDIA_URL}{obj.image}"
+        return None
 
 class TileSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(allow_null=True, required=False)
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Tile
-        fields = ['id', 'tile_name', 'price', 'image']
+        fields = ['id', 'tile_name', 'price', 'image', 'image_url']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return f"{settings.MEDIA_URL}{obj.image}"
+        return None
 
 class PenSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(allow_null=True, required=False)
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = Pens
-        fields = ['id', 'pen_name', 'price', 'image']
+        fields = ['id', 'pen_name', 'price', 'image', 'image_url']
+
+    def get_image_url(self, obj):
+        if obj.image:
+            return f"{settings.MEDIA_URL}{obj.image}"
+        return None
 
 class GiftOrderSerializer(serializers.ModelSerializer):
     content_type = serializers.CharField()
@@ -411,3 +511,4 @@ class GiftOrderSerializer(serializers.ModelSerializer):
         content_type = validated_data.pop('content_type')
         validated_data['content_type'] = content_type
         return super().create(validated_data)
+

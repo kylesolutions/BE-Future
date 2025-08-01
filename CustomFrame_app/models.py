@@ -196,14 +196,13 @@ class MackBoard(models.Model):
     def __str__(self):
         return self.board_name
 
-class SavedItemMackBoard(models.Model):
-    saved_item = models.ForeignKey('SavedItem', on_delete=models.CASCADE)
-    mack_board = models.ForeignKey(MackBoard, on_delete=models.CASCADE)
-    width = models.IntegerField(null=True, blank=True, default=20)
-    color = models.CharField(max_length=7, null=True, blank=True)
+class MackBoardColorVariant(models.Model):
+    mack_board = models.ForeignKey(MackBoard, related_name='color_variants', on_delete=models.CASCADE)
+    color_name = models.CharField(max_length=50)
+    image = models.ImageField(upload_to='mack_board_color_images/', null=True, blank=True)
 
     def __str__(self):
-        return f"{self.mack_board.board_name} for SavedItem {self.saved_item.id}"
+        return f"{self.color_name} for {self.mack_board.board_name}"
 
 
 @deconstructible
@@ -217,13 +216,12 @@ class UploadToShortName:
         return os.path.join(self.path, new_filename)
 
 class SavedItem(models.Model):
-    user = models.ForeignKey(Login, on_delete=models.CASCADE)
+    user = models.ForeignKey('Login', on_delete=models.CASCADE)
     frame = models.ForeignKey('Frame', on_delete=models.SET_NULL, null=True, blank=True)
     color_variant = models.ForeignKey('ColorVariant', on_delete=models.SET_NULL, null=True, blank=True)
     size_variant = models.ForeignKey('SizeVariant', on_delete=models.SET_NULL, null=True, blank=True)
     finish_variant = models.ForeignKey('FinishingVariant', on_delete=models.SET_NULL, null=True, blank=True)
     hanging_variant = models.ForeignKey('FrameHangVariant', on_delete=models.SET_NULL, null=True, blank=True)
-    mack_boards = models.ManyToManyField(MackBoard, through='SavedItemMackBoard', blank=True)  # Updated to use through model
     custom_width = models.FloatField(null=True, blank=True)
     custom_height = models.FloatField(null=True, blank=True)
     transform_x = models.FloatField(default=0)
@@ -252,6 +250,16 @@ class SavedItem(models.Model):
 
     def __str__(self):
         return f"SavedItem {self.id} for user {self.user.username}"
+
+class SavedItemMackBoard(models.Model):
+    saved_item = models.ForeignKey(SavedItem, on_delete=models.CASCADE, related_name='mack_boards')
+    mack_board = models.ForeignKey('MackBoard', on_delete=models.SET_NULL, null=True, blank=True)
+    mack_board_color = models.ForeignKey('MackBoardColorVariant', on_delete=models.SET_NULL, null=True, blank=True)
+    width = models.IntegerField(default=20)
+    position = models.IntegerField(default=0)  # To maintain order of MackBoards
+
+    def __str__(self):
+        return f"MackBoard {self.mack_board.board_name} for SavedItem {self.saved_item.id}"
 
 
 class Mug(models.Model):
@@ -302,3 +310,5 @@ class GiftOrder(models.Model):
 
     def __str__(self):
         return f"Order {self.id} by {self.user.username} - {self.content_type.model} {self.object_id}"
+
+

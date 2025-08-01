@@ -18,12 +18,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, I
 from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, GiftOrder
+    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, MackBoardColorVariant
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
     CartItemSerializer, CartItemUpdateSerializer, FrameCategoriesSerializer, MackBoardSerializer, SavedItemSerializer,
     MugSerializer, CapSerializer, TshirtSerializer, TileSerializer, PenSerializer, GiftOrderSerializer,
+    MackBoardColorVariantSerializer,
 )
 import json
 
@@ -453,6 +454,17 @@ class MackBoardListCreateView(generics.ListCreateAPIView):
             raise PermissionDenied("Only admins can create MackBoards")
         serializer.save()
 
+
+class MackBoardColorVariantListCreateView(generics.ListCreateAPIView):
+    queryset = MackBoardColorVariant.objects.all()
+    serializer_class = MackBoardColorVariantSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def perform_create(self, serializer):
+        if not self.request.user.is_staff:
+            raise PermissionDenied("Only admins can create MackBoardColorVariants")
+        serializer.save()
+
 class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = MackBoard.objects.all()
     serializer_class = MackBoardSerializer
@@ -516,6 +528,7 @@ class SavedItemView(APIView):
                 items = SavedItem.objects.all()
             else:
                 items = SavedItem.objects.filter(user=request.user)
+
             serializer = SavedItemSerializer(items, many=True, context={'request': request})
             logger.debug(f"Fetched {len(items)} saved items for user {request.user.username}")
             return Response(serializer.data, status=status.HTTP_200_OK)
@@ -531,7 +544,7 @@ class SavedItemView(APIView):
             logger.debug(f"SavedItem created: {item.id}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         logger.error(f"Serializer errors: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Invalid data", "details": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request, pk, *args, **kwargs):
         logger.debug(f"PUT request data for pk {pk}: {request.data}")
@@ -540,13 +553,14 @@ class SavedItemView(APIView):
         except SavedItem.DoesNotExist:
             logger.error(f"SavedItem {pk} not found")
             return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
+
         serializer = SavedItemSerializer(instance, data=request.data, partial=True, context={'request': request})
         if serializer.is_valid():
             item = serializer.save()
             logger.debug(f"SavedItem {pk} updated")
             return Response(serializer.data)
         logger.error(f"Serializer errors: {serializer.errors}")
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"error": "Invalid data", "details": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
         try:
@@ -559,6 +573,15 @@ class SavedItemView(APIView):
         except SavedItem.DoesNotExist:
             return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
 
+from django.http import JsonResponse
+from django.core.mail import send_mail
+from rest_framework.decorators import api_view
+from rest_framework import status
+from .models import SavedItem, GiftOrder
+import logging
+
+logger = logging.getLogger(__name__)
+
 @api_view(['POST'])
 def send_order_confirmation(request):
     try:
@@ -569,34 +592,114 @@ def send_order_confirmation(request):
         order_details = data.get('orderDetails')
         total_cost = data.get('totalCost')
         sender_email = data.get('senderEmail', 'jayalakshmikyle@gmail.com')
+        custom_message = data.get('customMessage', '')
 
         if not all([customer_email, customer_name, order_details, total_cost]):
+            logger.error("Missing required fields in send_order_confirmation")
             return JsonResponse(
                 {'error': 'Missing required fields'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        subject = f"Order Confirmation for {customer_name}"
+        # Plain text email for fallback
         plain_message = f"Dear {customer_name},\n\nYour order has been confirmed!\n\nOrder Details:\n"
         for item in order_details:
             if item.get('type') == 'gift':
                 plain_message += f"- Gift Item: {item['content_type']} (ID: {item['object_id']}), Price: ${item['price']}\n"
             else:
-                plain_message += f"- Frame: {item['frame']}, Size: {item['printSize']}, Price: ${item['price']}\n"
-        plain_message += f"\nTotal Cost: ${total_cost}\nPhone: {customer_phone}\n\nThank you for your order!"
+                plain_message += (
+                    f"- Frame: {item['frame']}, "
+                    f"Print Size: {item['printSize']}, "
+                    f"Media Type: {item['mediaType']}, "
+                    f"Paper Type: {item['paperType']}, "
+                    f"Fit: {item['fit']}, "
+                    f"Mack Boards: {item['mackBoards']}, "
+                    f"Price: ${item['price']}\n"
+                )
+        plain_message += f"\nTotal Cost: ${total_cost}\nPhone: {customer_phone}\n"
+        if custom_message:
+            plain_message += f"\nCustom Message: {custom_message}\n"
+        plain_message += "\nThank you for your order!"
 
+        # HTML email template
+        html_message = f"""
+        <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 8px;">
+                    <h2 style="color: #2c3e50; text-align: center;">Order Confirmation</h2>
+                    <p>Dear {customer_name},</p>
+                    <p>Thank you for your order! Below are the details of your purchase:</p>
+                    <h3 style="color: #2c3e50;">Order Details</h3>
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="border: 1px solid #ddd; padding: 8px;">Item</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Details</th>
+                                <th style="border: 1px solid #ddd; padding: 8px;">Price</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {"".join([
+                                f"""
+                                <tr>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                        {"Gift Item" if item['type'] == 'gift' else "Framed Item"}
+                                    </td>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">
+                                        {"<strong>Type:</strong> " + item['content_type'] + "<br><strong>ID:</strong> " + str(item['object_id']) if item['type'] == 'gift' else (
+                                            f"<strong>Frame:</strong> {item['frame']}<br>"
+                                            f"<strong>Print Size:</strong> {item['printSize']}<br>"
+                                            f"<strong>Media Type:</strong> {item['mediaType']}<br>"
+                                            f"<strong>Paper Type:</strong> {item['paperType']}<br>"
+                                            f"<strong>Fit:</strong> {item['fit']}<br>"
+                                            f"<strong>Border Depth:</strong> {item['borderDepth']}<br>"
+                                            f"<strong>Border Color:</strong> {item['borderColor']}<br>"
+                                            f"<strong>Frame Depth:</strong> {item['frameDepth']}<br>"
+                                            f"<strong>Color Variant:</strong> {item['color']}<br>"
+                                            f"<strong>Size Variant:</strong> {item['size']}<br>"
+                                            f"<strong>Finish Variant:</strong> {item['finish']}<br>"
+                                            f"<strong>Hanging Variant:</strong> {item['hanging']}<br>"
+                                            f"<strong>Mack Boards:</strong> {item['mackBoards']}"
+                                        )}
+                                    </td>
+                                    <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                                </tr>
+                                """ for item in order_details
+                            ])}
+                        </tbody>
+                    </table>
+                    <p><strong>Total Cost:</strong> ${total_cost}</p>
+                    <p><strong>Phone:</strong> {customer_phone}</p>
+                    {"<p><strong>Custom Message:</strong> " + custom_message + "</p>" if custom_message else ""}
+                    <p style="text-align: center; margin-top: 20px;">
+                        Thank you for choosing us! If you have any questions, please contact us at {sender_email}.
+                    </p>
+                    <p style="text-align: center; font-size: 12px; color: #777;">
+                        &copy; 2025 Your Company Name. All rights reserved.
+                    </p>
+                </div>
+            </body>
+        </html>
+        """
+
+        # Send email
         send_mail(
-            subject=subject,
+            subject=f"Order Confirmation for {customer_name}",
             message=plain_message,
             from_email=sender_email,
             recipient_list=[customer_email],
+            html_message=html_message,
             fail_silently=False,
         )
+
         # Update status of all user's saved items and gift orders to 'paid'
         SavedItem.objects.filter(user=request.user).update(status='paid')
         GiftOrder.objects.filter(user=request.user).update(status='paid')
+
+        logger.info(f"Order confirmation email sent to {customer_email}")
         return JsonResponse({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
     except Exception as e:
+        logger.error(f"Error sending order confirmation: {str(e)}")
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])

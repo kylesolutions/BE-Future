@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Order Bill</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .bill-container { max-width: 800px; margin: auto; }
+        .bill-header { text-align: center; }
+        .bill-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .bill-table th, .bill-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .bill-table th { background-color: #f2f2f2; }
+        .total { margin-top: 20px; font-weight: bold; text-align: right; }
+        .customer-details { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="bill-container">
+        <div class="bill-header">
+            <h1>Order Bill</h1>
+            <p>Date: {{ date }}</p>
+        </div>
+        <div class="customer-details">
+            <p><strong>Customer Name:</strong> {{ customer_name }}</p>
+            <p><strong>Email:</strong> {{ customer_email }}</p>
+            <p><strong>Phone:</strong> {{ customer_phone }}</p>
+            {% if custom_message %}
+                <p><strong>Custom Message:</strong> {{ custom_message }}</p>
+            {% endif %}
+        </div>
+        <table class="bill-table">
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Details</th>
+                    <th>Price</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in order_details %}
+                    <tr>
+                        <td>
+                            {% if item.type == 'gift' %}
+                                Gift Item
+                            {% else %}
+                                Framed Item
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if item.type == 'gift' %}
+                                <p><strong>Item Type:</strong> {{ item.content_type }}</p>
+                                <p><strong>Item ID:</strong> {{ item.object_id }}</p>
+                            {% else %}
+                                <p><strong>Frame:</strong> {{ item.frame }}</p>
+                                <p><strong>Color:</strong> {{ item.color }}</p>
+                                <p><strong>Size:</strong> {{ item.size }}</p>
+                                <p><strong>Finish:</strong> {{ item.finish }}</p>
+                                <p><strong>Hanging:</strong> {{ item.hanging }}</p>
+                                <p><strong>Print Size:</strong> {{ item.printSize }}</p>
+                                <p><strong>Media Type:</strong> {{ item.mediaType }}</p>
+                                {% if item.paperType != 'None' %}
+                                    <p><strong>Paper Type:</strong> {{ item.paperType }}</p>
+                                {% endif %}
+                                <p><strong>Fit:</strong> {{ item.fit }}</p>
+                                {% if item.frameDepth != 'None' %}
+                                    <p><strong>Frame Depth:</strong> {{ item.frameDepth }}</p>
+                                {% endif %}
+                                {% if item.fit == 'bordered' %}
+                                    <p><strong>Border Depth:</strong> {{ item.borderDepth }}</p>
+                                    <p><strong>Border Color:</strong> {{ item.borderColor }}</p>
+                                {% endif %}
+                                {% if item.mackBoards != 'None' %}
+                                    <p><strong>Mack Boards:</strong> {{ item.mackBoards }}</p>
+                                {% endif %}
+                            {% endif %}
+                        </td>
+                        <td>${{ item.price }}</td>
+                        <td>{{ item.status|default:'Pending' }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="total">
+            <p>Total Cost: ${{ total_cost }}</p>
+        </div>
+    </div>
+</body>
+</html>

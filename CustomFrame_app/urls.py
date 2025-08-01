@@ -7,7 +7,7 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     upload_image, UserRegistrationView, FrameCategoriesListCreateView, \
     FrameListCreateView, FrameCategoriesDetailView, SavedItemView, MackBoardListCreateView, MackBoardDetailView, \
     CurrentUserView, MugListCreateView, CapListCreateView, TshirtListCreateView, TileListCreateView, PenListCreateView, \
-    GiftOrderCreateView
+    GiftOrderCreateView, MackBoardColorVariantListCreateView
 
 urlpatterns = [
     path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('mack_boards/', MackBoardListCreateView.as_view(), name='mack_board-list-create'),
     path('mack_boards/<int:pk>/', MackBoardDetailView.as_view(), name='mack_board-detail'),
+    path('mack_board_color_variants/',MackBoardColorVariantListCreateView.as_view(), name='mack_board_color_variants'),
     path('categories/', FrameCategoriesListCreateView.as_view(), name='categories-list-create'),
     path('categories/<int:pk>/', FrameCategoriesDetailView.as_view(), name='categories-detail'),
     path('frames/', FrameListCreateView.as_view(), name='frame-list-create'),
