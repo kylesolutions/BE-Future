@@ -18,13 +18,15 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, I
 from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, MackBoardColorVariant
+    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, MackBoardColorVariant, \
+    LaminationType, PaperType, PrintSize, PrintType, DocumentPrintOrder
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
     CartItemSerializer, CartItemUpdateSerializer, FrameCategoriesSerializer, MackBoardSerializer, SavedItemSerializer,
     MugSerializer, CapSerializer, TshirtSerializer, TileSerializer, PenSerializer, GiftOrderSerializer,
-    MackBoardColorVariantSerializer,
+    MackBoardColorVariantSerializer, DocumentPrintOrderSerializer, LaminationTypeSerializer, PaperTypeSerializer,
+    PrintSizeSerializer, PrintTypeSerializer,
 )
 import json
 
@@ -577,7 +579,7 @@ from django.http import JsonResponse
 from django.core.mail import send_mail
 from rest_framework.decorators import api_view
 from rest_framework import status
-from .models import SavedItem, GiftOrder
+from .models import SavedItem, GiftOrder, DocumentPrintOrder
 import logging
 
 logger = logging.getLogger(__name__)
@@ -606,6 +608,19 @@ def send_order_confirmation(request):
         for item in order_details:
             if item.get('type') == 'gift':
                 plain_message += f"- Gift Item: {item['content_type']} (ID: {item['object_id']}), Price: ${item['price']}\n"
+            elif item.get('type') == 'document':
+                plain_message += (
+                    f"- Document Print:\n"
+                    f"  Print Type: {item['print_type']}\n"
+                    f"  Print Size: {item['print_size']}\n"
+                    f"  Paper Type: {item['paper_type']}\n"
+                    f"  Quantity: {item['quantity']}\n"
+                    f"  Lamination: {item['lamination']}\n"
+                    f"  Lamination Type: {item['lamination_type']}\n"
+                    f"  Delivery Method: {item['delivery_method']}\n"
+                    f"  Delivery Charge: ${item['delivery_charge']}\n"
+                    f"  Price: ${item['price']}\n"
+                )
             else:
                 plain_message += (
                     f"- Frame: {item['frame']}, "
@@ -643,10 +658,22 @@ def send_order_confirmation(request):
                                 f"""
                                 <tr>
                                     <td style="border: 1px solid #ddd; padding: 8px;">
-                                        {"Gift Item" if item['type'] == 'gift' else "Framed Item"}
+                                        {item['type'] == 'gift' and 'Gift Item' or item['type'] == 'document' and 'Document Print' or 'Framed Item'}
                                     </td>
                                     <td style="border: 1px solid #ddd; padding: 8px;">
-                                        {"<strong>Type:</strong> " + item['content_type'] + "<br><strong>ID:</strong> " + str(item['object_id']) if item['type'] == 'gift' else (
+                                        {item['type'] == 'gift' and (
+                                            f"<strong>Type:</strong> {item['content_type']}<br>"
+                                            f"<strong>ID:</strong> {item['object_id']}"
+                                        ) or item['type'] == 'document' and (
+                                            f"<strong>Print Type:</strong> {item['print_type']}<br>"
+                                            f"<strong>Print Size:</strong> {item['print_size']}<br>"
+                                            f"<strong>Paper Type:</strong> {item['paper_type']}<br>"
+                                            f"<strong>Quantity:</strong> {item['quantity']}<br>"
+                                            f"<strong>Lamination:</strong> {item['lamination']}<br>"
+                                            f"<strong>Lamination Type:</strong> {item['lamination_type']}<br>"
+                                            f"<strong>Delivery Method:</strong> {item['delivery_method']}<br>"
+                                            f"<strong>Delivery Charge:</strong> ${item['delivery_charge']}"
+                                        ) or (
                                             f"<strong>Frame:</strong> {item['frame']}<br>"
                                             f"<strong>Print Size:</strong> {item['printSize']}<br>"
                                             f"<strong>Media Type:</strong> {item['mediaType']}<br>"
@@ -692,9 +719,10 @@ def send_order_confirmation(request):
             fail_silently=False,
         )
 
-        # Update status of all user's saved items and gift orders to 'paid'
+        # Update status of all user's orders to 'paid'
         SavedItem.objects.filter(user=request.user).update(status='paid')
         GiftOrder.objects.filter(user=request.user).update(status='paid')
+        DocumentPrintOrder.objects.filter(user=request.user).update(status='paid')
 
         logger.info(f"Order confirmation email sent to {customer_email}")
         return JsonResponse({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
@@ -703,28 +731,52 @@ def send_order_confirmation(request):
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-def update_saved_items_status(request):
+def update_document_print_orders_status(request):
     try:
-        SavedItem.objects.filter(user=request.user).update(status='paid')
-        return JsonResponse({'message': 'Saved items status updated to paid'}, status=status.HTTP_200_OK)
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        DocumentPrintOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
+        return JsonResponse({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
     except Exception as e:
+        logger.error(f"Error updating document print orders status: {str(e)}")
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(['POST'])
+def update_saved_items_status(request):
+    try:
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        SavedItem.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
+        return JsonResponse({'message': 'Saved items status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error updating saved items status: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class UpdateGiftOrdersStatusView(APIView):
-    permission_classes = [IsAuthenticated]
+@api_view(['POST'])
+def update_gift_orders_status(request):
+    try:
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        GiftOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
+        return JsonResponse({'message': 'Gift orders status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error updating gift orders status: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    def post(self, request):
-        try:
-            order_ids = request.data.get('orderIds', [])
-            if not order_ids:
-                return Response({"error": "No order IDs provided"}, status=status.HTTP_400_BAD_REQUEST)
-            GiftOrder.objects.filter(id__in=order_ids, user=request.user).update(status='paid')
-            logger.info(f"Updated status to 'paid' for GiftOrder IDs {order_ids} for user {request.user.username}")
-            return Response({"message": "Gift order statuses updated"}, status=status.HTTP_200_OK)
-        except Exception as e:
-            logger.error(f"Error updating gift order statuses: {str(e)}")
-            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+@api_view(['POST'])
+def update_document_print_orders_status(request):
+    try:
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        DocumentPrintOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
+        return JsonResponse({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error updating document print orders status: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -911,3 +963,194 @@ class GiftOrderListView(generics.ListAPIView):
         serializer = self.get_serializer(queryset, many=True, context={'request': request})
         logger.info(f"Retrieved {len(queryset)} gift orders for user {request.user.username}")
         return Response(serializer.data)
+
+class PrintTypeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        print_types = PrintType.objects.all()
+        serializer = PrintTypeSerializer(print_types, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = PrintTypeSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            print_type = PrintType.objects.get(pk=pk)
+        except PrintType.DoesNotExist:
+            return Response({"error": "Print type not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PrintTypeSerializer(print_type, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            print_type = PrintType.objects.get(pk=pk)
+        except PrintType.DoesNotExist:
+            return Response({"error": "Print type not found"}, status=status.HTTP_404_NOT_FOUND)
+        print_type.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class PrintSizeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        print_sizes = PrintSize.objects.all()
+        serializer = PrintSizeSerializer(print_sizes, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = PrintSizeSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            print_size = PrintSize.objects.get(pk=pk)
+        except PrintSize.DoesNotExist:
+            return Response({"error": "Print size not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PrintSizeSerializer(print_size, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            print_size = PrintSize.objects.get(pk=pk)
+        except PrintSize.DoesNotExist:
+            return Response({"error": "Print size not found"}, status=status.HTTP_404_NOT_FOUND)
+        print_size.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class PaperTypeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        paper_types = PaperType.objects.all()
+        serializer = PaperTypeSerializer(paper_types, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = PaperTypeSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            paper_type = PaperType.objects.get(pk=pk)
+        except PaperType.DoesNotExist:
+            return Response({"error": "Paper type not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = PaperTypeSerializer(paper_type, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            paper_type = PaperType.objects.get(pk=pk)
+        except PaperType.DoesNotExist:
+            return Response({"error": "Paper type not found"}, status=status.HTTP_404_NOT_FOUND)
+        paper_type.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class LaminationTypeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        lamination_types = LaminationType.objects.all()
+        serializer = LaminationTypeSerializer(lamination_types, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = LaminationTypeSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            lamination_type = LaminationType.objects.get(pk=pk)
+        except LaminationType.DoesNotExist:
+            return Response({"error": "Lamination type not found"}, status=status.HTTP_404_NOT_FOUND)
+        serializer = LaminationTypeSerializer(lamination_type, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Admin access required"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            lamination_type = LaminationType.objects.get(pk=pk)
+        except LaminationType.DoesNotExist:
+            return Response({"error": "Lamination type not found"}, status=status.HTTP_404_NOT_FOUND)
+        lamination_type.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+class DocumentPrintOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.is_staff or request.user.is_superuser:
+            orders = DocumentPrintOrder.objects.all()  # Admins see all orders
+        else:
+            orders = DocumentPrintOrder.objects.filter(user=request.user)  # Non-admins see only their orders
+        serializer = DocumentPrintOrderSerializer(orders, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        serializer = DocumentPrintOrderSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DocumentPrintOrderDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            order = DocumentPrintOrder.objects.get(pk=pk)
+            if not (request.user.is_staff or request.user.is_superuser or order.user == request.user):
+                return Response({"detail": "Not authorized to delete this order."}, status=status.HTTP_403_FORBIDDEN)
+            order.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except DocumentPrintOrder.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)

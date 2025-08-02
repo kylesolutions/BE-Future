@@ -312,3 +312,75 @@ class GiftOrder(models.Model):
         return f"Order {self.id} by {self.user.username} - {self.content_type.model} {self.object_id}"
 
 
+class PrintType(models.Model):
+    name = models.CharField(max_length=50, unique=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.name} - {self.price}"
+
+
+class PrintSize(models.Model):
+    name = models.CharField(max_length=20, unique=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.name} - {self.price}"
+
+
+class PaperType(models.Model):
+    name = models.CharField(max_length=20, unique=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.name} - {self.price}"
+
+
+class LaminationType(models.Model):
+    name = models.CharField(max_length=20, unique=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.name} - {self.price}"
+
+
+class DocumentPrintOrder(models.Model):
+    DELIVERY_METHODS = (
+        ('Collection', 'Collection'),
+        ('Delivery', 'Delivery'),
+    )
+
+    user = models.ForeignKey(Login, on_delete=models.CASCADE, related_name='document_print_orders')
+    file = models.FileField(upload_to='document_prints/%Y/%m/%d/')
+    print_type = models.ForeignKey(PrintType, on_delete=models.SET_NULL, null=True)
+    print_size = models.ForeignKey(PrintSize, on_delete=models.SET_NULL, null=True)
+    quantity = models.PositiveIntegerField()
+    paper_type = models.ForeignKey(PaperType, on_delete=models.SET_NULL, null=True)
+    delivery_method = models.CharField(max_length=20, choices=DELIVERY_METHODS)
+    delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    lamination = models.BooleanField(default=False)
+    lamination_type = models.ForeignKey(LaminationType, on_delete=models.SET_NULL, null=True, blank=True)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, default='pending')
+
+    def calculate_total_price(self):
+        price = 0
+        if self.print_type:
+            price += float(self.print_type.price)
+        if self.print_size:
+            price += float(self.print_size.price)
+        if self.paper_type:
+            price += float(self.paper_type.price)
+        if self.lamination and self.lamination_type:
+            price += float(self.lamination_type.price)
+        price *= self.quantity
+        price += float(self.delivery_charge)
+        return round(price, 2)
+
+    def save(self, *args, **kwargs):
+        self.total_price = self.calculate_total_price()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.print_type.name if self.print_type else 'Order'} by {self.user.username} - {self.created_at}"

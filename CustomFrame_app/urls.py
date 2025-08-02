@@ -7,7 +7,9 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     upload_image, UserRegistrationView, FrameCategoriesListCreateView, \
     FrameListCreateView, FrameCategoriesDetailView, SavedItemView, MackBoardListCreateView, MackBoardDetailView, \
     CurrentUserView, MugListCreateView, CapListCreateView, TshirtListCreateView, TileListCreateView, PenListCreateView, \
-    GiftOrderCreateView, MackBoardColorVariantListCreateView
+    GiftOrderCreateView, MackBoardColorVariantListCreateView, PrintTypeView, PrintSizeView, PaperTypeView, \
+    LaminationTypeView, DocumentPrintOrderView, DocumentPrintOrderDetailView, update_document_print_orders_status, \
+    update_gift_orders_status, update_saved_items_status, send_order_confirmation
 
 urlpatterns = [
     path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
@@ -37,8 +39,6 @@ urlpatterns = [
     path('cart/items/<int:item_id>/', CartItemDetailView.as_view(), name='cart_item_detail'),
     path('save-items/', SavedItemView.as_view(), name='save_items'),
     path('save-items/<int:pk>/', SavedItemView.as_view(), name='save_item_detail'),
-    path('send-order-confirmation/',views.send_order_confirmation,name='send-order-confirmation'),
-    path('update-saved-items-status/', views.update_saved_items_status, name='update-saved-items-status'),
     path('mugs/', MugListCreateView.as_view(), name='mug-list-create'),
     path('caps/', CapListCreateView.as_view(), name='cap-list-create'),
     path('tshirts/', TshirtListCreateView.as_view(), name='tshirt-list-create'),
@@ -47,6 +47,19 @@ urlpatterns = [
     path('gift-orders/', GiftOrderCreateView.as_view(), name='gift-order-create'),
     path('gift-orders/list/', views.GiftOrderListView.as_view(), name='gift-order-list'),
     path('gift-orders/<int:pk>/', views.GiftOrderCreateView.as_view(), name='gift-order-delete'),
-    path('update-gift-orders-status/', views.UpdateGiftOrdersStatusView.as_view(), name='update-gift-orders-status'),
+    path('api/print-types/', PrintTypeView.as_view(), name='print_type_list_create'),
+    path('api/print-types/<int:pk>/', PrintTypeView.as_view(), name='print_type_detail'),
+    path('api/print-sizes/', PrintSizeView.as_view(), name='print_size_list_create'),
+    path('api/print-sizes/<int:pk>/', PrintSizeView.as_view(), name='print_size_detail'),
+    path('api/paper-types/', PaperTypeView.as_view(), name='paper_type_list_create'),
+    path('api/paper-types/<int:pk>/', PaperTypeView.as_view(), name='paper_type_detail'),
+    path('api/lamination-types/', LaminationTypeView.as_view(), name='lamination_type_list_create'),
+    path('api/lamination-types/<int:pk>/', LaminationTypeView.as_view(), name='lamination_type_detail'),
+    path('api/document-print-orders/', DocumentPrintOrderView.as_view(), name='document_print_order_create'),
+    path('api/document-print-orders/<int:pk>/', DocumentPrintOrderDetailView.as_view(),name='document_print_order_detail'),
+    path('send-order-confirmation/', send_order_confirmation, name='send_order_confirmation'),
+    path('update-saved-items-status/', update_saved_items_status, name='update_saved_items_status'),
+    path('update-gift-orders-status/', update_gift_orders_status, name='update_gift_orders_status'),
+    path('update-document-print-orders-status/', update_document_print_orders_status, name='update_document_print_orders_status')
 ]
 

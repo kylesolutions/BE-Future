@@ -6,7 +6,7 @@ from rest_framework.response import Response
 import logging
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
     CartItem, FrameCategories, MackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, \
-    MackBoardColorVariant, SavedItemMackBoard
+    MackBoardColorVariant, SavedItemMackBoard, PrintType, PrintSize, PaperType, LaminationType, DocumentPrintOrder
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -372,9 +372,7 @@ class SavedItemSerializer(serializers.ModelSerializer):
                     width=mack_board_data.get('width', 20),
                     position=index
                 )
-
         return instance
-
 
 class MugSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(allow_null=True, required=False)
@@ -512,3 +510,83 @@ class GiftOrderSerializer(serializers.ModelSerializer):
         validated_data['content_type'] = content_type
         return super().create(validated_data)
 
+
+class PrintTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrintType
+        fields = ['id', 'name', 'price']
+
+    def validate_name(self, value):
+        if PrintType.objects.filter(name=value).exclude(id=self.instance.id if self.instance else None).exists():
+            raise serializers.ValidationError("Print type with this name already exists.")
+        return value
+
+
+class PrintSizeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PrintSize
+        fields = ['id', 'name', 'price']
+
+    def validate_name(self, value):
+        if PrintSize.objects.filter(name=value).exclude(id=self.instance.id if self.instance else None).exists():
+            raise serializers.ValidationError("Print size with this name already exists.")
+        return value
+
+
+class PaperTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaperType
+        fields = ['id', 'name', 'price']
+
+    def validate_name(self, value):
+        if PaperType.objects.filter(name=value).exclude(id=self.instance.id if self.instance else None).exists():
+            raise serializers.ValidationError("Paper type with this name already exists.")
+        return value
+
+
+class LaminationTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LaminationType
+        fields = ['id', 'name', 'price']
+
+    def validate_name(self, value):
+        if LaminationType.objects.filter(name=value).exclude(id=self.instance.id if self.instance else None).exists():
+            raise serializers.ValidationError("Lamination type with this name already exists.")
+        return value
+
+
+
+class DocumentPrintOrderSerializer(serializers.ModelSerializer):
+    file = serializers.FileField()
+    print_type = serializers.PrimaryKeyRelatedField(queryset=PrintType.objects.all(), allow_null=False)
+    print_size = serializers.PrimaryKeyRelatedField(queryset=PrintSize.objects.all(), allow_null=False)
+    paper_type = serializers.PrimaryKeyRelatedField(queryset=PaperType.objects.all(), allow_null=False)
+    lamination_type = serializers.PrimaryKeyRelatedField(queryset=LaminationType.objects.all(), allow_null=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    user_id = serializers.IntegerField(source='user.id', read_only=True)
+    print_type_name = serializers.CharField(source='print_type.name', read_only=True)
+    print_size_name = serializers.CharField(source='print_size.name', read_only=True)
+    paper_type_name = serializers.CharField(source='paper_type.name', read_only=True)
+    lamination_type_name = serializers.CharField(source='lamination_type.name', read_only=True, allow_null=True)
+
+    class Meta:
+        model = DocumentPrintOrder
+        fields = [
+            'id', 'file', 'print_type', 'print_size', 'quantity', 'paper_type',
+            'delivery_method', 'delivery_charge', 'lamination', 'lamination_type',
+            'total_price', 'created_at', 'status', 'username', 'user_id',
+            'print_type_name', 'print_size_name', 'paper_type_name', 'lamination_type_name'
+        ]
+        read_only_fields = [
+            'id', 'total_price', 'created_at', 'status', 'username', 'user_id',
+            'print_type_name', 'print_size_name', 'paper_type_name', 'lamination_type_name'
+        ]
+
+    def validate(self, data):
+        if not data.get('file'):
+            raise serializers.ValidationError({"file": "A file is required."})
+        if data.get('quantity', 0) < 1:
+            raise serializers.ValidationError({"quantity": "Quantity must be at least 1."})
+        if data.get('lamination') and not data.get('lamination_type'):
+            raise serializers.ValidationError({"lamination_type": "Lamination type is required when lamination is selected."})
+        return data
