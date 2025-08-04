@@ -637,6 +637,60 @@ def send_order_confirmation(request):
         plain_message += "\nThank you for your order!"
 
         # HTML email template
+        html_rows = ""
+        for item in order_details:
+            if item.get('type') == 'gift':
+                html_rows += f"""
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Gift Item</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <strong>Type:</strong> {item['content_type']}<br>
+                            <strong>ID:</strong> {item['object_id']}
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                    </tr>
+                """
+            elif item.get('type') == 'document':
+                html_rows += f"""
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Document Print</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <strong>Print Type:</strong> {item['print_type']}<br>
+                            <strong>Print Size:</strong> {item['print_size']}<br>
+                            <strong>Paper Type:</strong> {item['paper_type']}<br>
+                            <strong>Quantity:</strong> {item['quantity']}<br>
+                            <strong>Lamination:</strong> {item['lamination']}<br>
+                            <strong>Lamination Type:</strong> {item['lamination_type']}<br>
+                            <strong>Delivery Method:</strong> {item['delivery_method']}<br>
+                            <strong>Delivery Charge:</strong> ${item['delivery_charge']}
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                    </tr>
+                """
+            else:
+                html_rows += f"""
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">Framed Item</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <strong>Frame:</strong> {item['frame']}<br>
+                            <strong>Print Size:</strong> {item['printSize']}<br>
+                            <strong>Media Type:</strong> {item['mediaType']}<br>
+                            <strong>Paper Type:</strong> {item['paperType']}<br>
+                            <strong>Fit:</strong> {item['fit']}<br>
+                            <strong>Border Depth:</strong> {item['borderDepth']}<br>
+                            <strong>Border Color:</strong> {item['borderColor']}<br>
+                            <strong>Frame Depth:</strong> {item['frameDepth']}<br>
+                            <strong>Color Variant:</strong> {item['color']}<br>
+                            <strong>Size Variant:</strong> {item['size']}<br>
+                            <strong>Finish Variant:</strong> {item['finish']}<br>
+                            <strong>Hanging Variant:</strong> {item['hanging']}<br>
+                            <strong>Mack Boards:</strong> {item['mackBoards']}
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                    </tr>
+                """
+
+        # Now inject into the email
         html_message = f"""
         <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
@@ -654,45 +708,7 @@ def send_order_confirmation(request):
                             </tr>
                         </thead>
                         <tbody>
-                            {"".join([
-                                f"""
-                                <tr>
-                                    <td style="border: 1px solid #ddd; padding: 8px;">
-                                        {item['type'] == 'gift' and 'Gift Item' or item['type'] == 'document' and 'Document Print' or 'Framed Item'}
-                                    </td>
-                                    <td style="border: 1px solid #ddd; padding: 8px;">
-                                        {item['type'] == 'gift' and (
-                                            f"<strong>Type:</strong> {item['content_type']}<br>"
-                                            f"<strong>ID:</strong> {item['object_id']}"
-                                        ) or item['type'] == 'document' and (
-                                            f"<strong>Print Type:</strong> {item['print_type']}<br>"
-                                            f"<strong>Print Size:</strong> {item['print_size']}<br>"
-                                            f"<strong>Paper Type:</strong> {item['paper_type']}<br>"
-                                            f"<strong>Quantity:</strong> {item['quantity']}<br>"
-                                            f"<strong>Lamination:</strong> {item['lamination']}<br>"
-                                            f"<strong>Lamination Type:</strong> {item['lamination_type']}<br>"
-                                            f"<strong>Delivery Method:</strong> {item['delivery_method']}<br>"
-                                            f"<strong>Delivery Charge:</strong> ${item['delivery_charge']}"
-                                        ) or (
-                                            f"<strong>Frame:</strong> {item['frame']}<br>"
-                                            f"<strong>Print Size:</strong> {item['printSize']}<br>"
-                                            f"<strong>Media Type:</strong> {item['mediaType']}<br>"
-                                            f"<strong>Paper Type:</strong> {item['paperType']}<br>"
-                                            f"<strong>Fit:</strong> {item['fit']}<br>"
-                                            f"<strong>Border Depth:</strong> {item['borderDepth']}<br>"
-                                            f"<strong>Border Color:</strong> {item['borderColor']}<br>"
-                                            f"<strong>Frame Depth:</strong> {item['frameDepth']}<br>"
-                                            f"<strong>Color Variant:</strong> {item['color']}<br>"
-                                            f"<strong>Size Variant:</strong> {item['size']}<br>"
-                                            f"<strong>Finish Variant:</strong> {item['finish']}<br>"
-                                            f"<strong>Hanging Variant:</strong> {item['hanging']}<br>"
-                                            f"<strong>Mack Boards:</strong> {item['mackBoards']}"
-                                        )}
-                                    </td>
-                                    <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
-                                </tr>
-                                """ for item in order_details
-                            ])}
+                            {html_rows}
                         </tbody>
                     </table>
                     <p><strong>Total Cost:</strong> ${total_cost}</p>
