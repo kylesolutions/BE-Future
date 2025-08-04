@@ -372,7 +372,7 @@ class DocumentPrintOrder(models.Model):
             price += float(self.print_size.price)
         if self.paper_type:
             price += float(self.paper_type.price)
-        if self.lamination and self.lamination_type:
+        if self.lamination and self.lamination_type:  # Only adds price if lamination_type exists
             price += float(self.lamination_type.price)
         price *= self.quantity
         price += float(self.delivery_charge)

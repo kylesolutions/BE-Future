@@ -554,14 +554,12 @@ class LaminationTypeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Lamination type with this name already exists.")
         return value
 
-
-
 class DocumentPrintOrderSerializer(serializers.ModelSerializer):
     file = serializers.FileField()
     print_type = serializers.PrimaryKeyRelatedField(queryset=PrintType.objects.all(), allow_null=False)
     print_size = serializers.PrimaryKeyRelatedField(queryset=PrintSize.objects.all(), allow_null=False)
     paper_type = serializers.PrimaryKeyRelatedField(queryset=PaperType.objects.all(), allow_null=False)
-    lamination_type = serializers.PrimaryKeyRelatedField(queryset=LaminationType.objects.all(), allow_null=True)
+    lamination_type = serializers.PrimaryKeyRelatedField(queryset=LaminationType.objects.all(), allow_null=True, required=False)
     username = serializers.CharField(source='user.username', read_only=True)
     user_id = serializers.IntegerField(source='user.id', read_only=True)
     print_type_name = serializers.CharField(source='print_type.name', read_only=True)
@@ -583,10 +581,12 @@ class DocumentPrintOrderSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
+        print("Serializer input data:", data)  # Debug log
         if not data.get('file'):
             raise serializers.ValidationError({"file": "A file is required."})
         if data.get('quantity', 0) < 1:
             raise serializers.ValidationError({"quantity": "Quantity must be at least 1."})
-        if data.get('lamination') and not data.get('lamination_type'):
-            raise serializers.ValidationError({"lamination_type": "Lamination type is required when lamination is selected."})
+        if 'lamination_type' in data and (data['lamination_type'] == '' or data['lamination_type'] is None):
+            data['lamination_type'] = None
+            print("Converted lamination_type to None")  # Debug log
         return data
