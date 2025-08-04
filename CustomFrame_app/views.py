@@ -608,6 +608,8 @@ def send_order_confirmation(request):
         for item in order_details:
             if item.get('type') == 'gift':
                 plain_message += f"- Gift Item: {item['content_type']} (ID: {item['object_id']}), Price: ${item['price']}\n"
+                if item.get('imageUrl'):
+                    plain_message += f"  Image: {item['imageUrl']}\n"
             elif item.get('type') == 'document':
                 plain_message += (
                     f"- Document Print:\n"
@@ -621,6 +623,8 @@ def send_order_confirmation(request):
                     f"  Delivery Charge: ${item['delivery_charge']}\n"
                     f"  Price: ${item['price']}\n"
                 )
+                if item.get('imageUrl'):
+                    plain_message += f"  Image: {item['imageUrl']}\n"
             else:
                 plain_message += (
                     f"- Frame: {item['frame']}, "
@@ -631,6 +635,8 @@ def send_order_confirmation(request):
                     f"Mack Boards: {item['mackBoards']}, "
                     f"Price: ${item['price']}\n"
                 )
+                if item.get('imageUrl'):
+                    plain_message += f"  Image: {item['imageUrl']}\n"
         plain_message += f"\nTotal Cost: ${total_cost}\nPhone: {customer_phone}\n"
         if custom_message:
             plain_message += f"\nCustom Message: {custom_message}\n"
@@ -639,10 +645,14 @@ def send_order_confirmation(request):
         # HTML email template
         html_rows = ""
         for item in order_details:
+            image_html = ""
+            if item.get('imageUrl') and item['imageUrl'] != 'https://via.placeholder.com/100x100?text=Image+Not+Found':
+                image_html = f'<img src="{item["imageUrl"]}" alt="Item Image" style="max-width: 100px; max-height: 100px; object-fit: cover;" />'
+
             if item.get('type') == 'gift':
                 html_rows += f"""
                     <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">Gift Item</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Gift Item'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">
                             <strong>Type:</strong> {item['content_type']}<br>
                             <strong>ID:</strong> {item['object_id']}
@@ -653,7 +663,7 @@ def send_order_confirmation(request):
             elif item.get('type') == 'document':
                 html_rows += f"""
                     <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">Document Print</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Document Print'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">
                             <strong>Print Type:</strong> {item['print_type']}<br>
                             <strong>Print Size:</strong> {item['print_size']}<br>
@@ -670,7 +680,7 @@ def send_order_confirmation(request):
             else:
                 html_rows += f"""
                     <tr>
-                        <td style="border: 1px solid #ddd; padding: 8px;">Framed Item</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Framed Item'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">
                             <strong>Frame:</strong> {item['frame']}<br>
                             <strong>Print Size:</strong> {item['printSize']}<br>
@@ -690,7 +700,7 @@ def send_order_confirmation(request):
                     </tr>
                 """
 
-        # Now inject into the email
+        # HTML email template
         html_message = f"""
         <html>
             <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
