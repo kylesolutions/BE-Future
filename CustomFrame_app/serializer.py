@@ -441,15 +441,19 @@ class PenSerializer(serializers.ModelSerializer):
 
 class GiftOrderSerializer(serializers.ModelSerializer):
     content_type = serializers.CharField()
+    uploaded_image = serializers.ImageField()
+    preview_image = serializers.ImageField(required=True)
+    size = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = GiftOrder
         fields = [
             'id', 'user', 'content_type', 'object_id', 'uploaded_image',
-            'image_position_x', 'image_position_y', 'image_scale_x',
-            'image_scale_y', 'image_rotation', 'total_price', 'created_at', 'status'
+            'preview_image', 'size', 'image_position_x', 'image_position_y',
+            'image_scale_x', 'image_scale_y', 'image_rotation',
+            'total_price', 'created_at', 'status'
         ]
-        read_only_fields = ['id', 'user', 'created_at']
+        read_only_fields = ['id', 'user', 'created_at', 'status']
 
     def validate_content_type(self, value):
         valid_models = ['mug', 'tshirt', 'cap', 'tile', 'pen']
@@ -478,6 +482,14 @@ class GiftOrderSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Object ID must be a valid integer.")
         return value
 
+    def validate_size(self, value):
+        valid_sizes = ['S', 'M', 'L', 'XL', 'XXL']
+        if value and value not in valid_sizes:
+            raise serializers.ValidationError(
+                f"Invalid T-shirt size: '{value}'. Must be one of: {', '.join(valid_sizes)}"
+            )
+        return value
+
     def validate_total_price(self, value):
         if value is None:
             raise serializers.ValidationError("Total price is required.")
@@ -490,6 +502,7 @@ class GiftOrderSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
+        logger.debug("Serializer input data: %s", data)
         content_type = data.get('content_type')
         object_id = data.get('object_id')
         if content_type and object_id:
@@ -503,6 +516,14 @@ class GiftOrderSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'object_id': f"Error validating object ID: {str(e)}"
                 })
+
+        if not data.get('uploaded_image'):
+            raise serializers.ValidationError({"uploaded_image": "An image is required."})
+        if not data.get('preview_image'):
+            raise serializers.ValidationError({"preview_image": "A preview image is required."})
+        if data.get('content_type') and data.get('content_type').model.lower() == 'tshirt' and not data.get('size', '').strip():
+            raise serializers.ValidationError({"size": "T-shirt size is required for T-shirt orders."})
+
         return data
 
     def create(self, validated_data):
@@ -566,12 +587,13 @@ class DocumentPrintOrderSerializer(serializers.ModelSerializer):
     print_size_name = serializers.CharField(source='print_size.name', read_only=True)
     paper_type_name = serializers.CharField(source='paper_type.name', read_only=True)
     lamination_type_name = serializers.CharField(source='lamination_type.name', read_only=True, allow_null=True)
+    address = serializers.CharField(required=False, allow_blank=True, allow_null=True)
 
     class Meta:
         model = DocumentPrintOrder
         fields = [
             'id', 'file', 'print_type', 'print_size', 'quantity', 'paper_type',
-            'delivery_method', 'delivery_charge', 'lamination', 'lamination_type',
+            'delivery_method', 'delivery_charge', 'address', 'lamination', 'lamination_type',
             'total_price', 'created_at', 'status', 'username', 'user_id',
             'print_type_name', 'print_size_name', 'paper_type_name', 'lamination_type_name'
         ]
@@ -581,12 +603,14 @@ class DocumentPrintOrderSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, data):
-        print("Serializer input data:", data)  # Debug log
+        logger.debug("Serializer input data: %s", data)
         if not data.get('file'):
             raise serializers.ValidationError({"file": "A file is required."})
         if data.get('quantity', 0) < 1:
             raise serializers.ValidationError({"quantity": "Quantity must be at least 1."})
+        if data.get('delivery_method') == 'Delivery' and not data.get('address', '').strip():
+            raise serializers.ValidationError({"address": "Delivery address is required for delivery method."})
         if 'lamination_type' in data and (data['lamination_type'] == '' or data['lamination_type'] is None):
             data['lamination_type'] = None
-            print("Converted lamination_type to None")  # Debug log
+            logger.debug("Converted lamination_type to None")
         return data

@@ -289,13 +289,15 @@ class Pens(models.Model):
 
 
 class GiftOrder(models.Model):
-    user = models.ForeignKey(Login, on_delete=models.CASCADE, related_name='gift_orders')
+    user = models.ForeignKey('Login', on_delete=models.CASCADE, related_name='gift_orders')
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, limit_choices_to={
-        'model__in': ['mug', 'tshirt', 'cap', 'tile', 'pens']
+        'model__in': ['mug', 'tshirt', 'cap', 'tile', 'pen']
     })
     object_id = models.PositiveIntegerField()
     item = GenericForeignKey('content_type', 'object_id')
-    uploaded_image = models.ImageField(upload_to='order_images/', blank=True, null=True)
+    uploaded_image = models.ImageField(upload_to='order_images/%Y/%m/%d/', blank=True, null=True)
+    preview_image = models.ImageField(upload_to='preview_images/%Y/%m/%d/', blank=True, null=True)
+    size = models.CharField(max_length=10, blank=True, null=True)
     image_position_x = models.FloatField(default=0)
     image_position_y = models.FloatField(default=0)
     image_scale_x = models.FloatField(default=1)
@@ -349,17 +351,17 @@ class DocumentPrintOrder(models.Model):
         ('Collection', 'Collection'),
         ('Delivery', 'Delivery'),
     )
-
-    user = models.ForeignKey(Login, on_delete=models.CASCADE, related_name='document_print_orders')
+    user = models.ForeignKey('Login', on_delete=models.CASCADE, related_name='document_print_orders')
     file = models.FileField(upload_to='document_prints/%Y/%m/%d/')
-    print_type = models.ForeignKey(PrintType, on_delete=models.SET_NULL, null=True)
-    print_size = models.ForeignKey(PrintSize, on_delete=models.SET_NULL, null=True)
+    print_type = models.ForeignKey('PrintType', on_delete=models.SET_NULL, null=True)
+    print_size = models.ForeignKey('PrintSize', on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField()
-    paper_type = models.ForeignKey(PaperType, on_delete=models.SET_NULL, null=True)
+    paper_type = models.ForeignKey('PaperType', on_delete=models.SET_NULL, null=True)
     delivery_method = models.CharField(max_length=20, choices=DELIVERY_METHODS)
     delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    address = models.TextField(blank=True, null=True)  # New address field
     lamination = models.BooleanField(default=False)
-    lamination_type = models.ForeignKey(LaminationType, on_delete=models.SET_NULL, null=True, blank=True)
+    lamination_type = models.ForeignKey('LaminationType', on_delete=models.SET_NULL, null=True, blank=True)
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     created_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(max_length=20, default='pending')
@@ -371,7 +373,7 @@ class DocumentPrintOrder(models.Model):
         if self.print_size:
             price += float(self.print_size.price)
         if self.paper_type:
-            price += float(self.paper_type.price)
+            price += float(self.print_type.price)
         if self.lamination and self.lamination_type:  # Only adds price if lamination_type exists
             price += float(self.lamination_type.price)
         price *= self.quantity
