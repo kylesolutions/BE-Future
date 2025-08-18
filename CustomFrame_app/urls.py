@@ -3,13 +3,16 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from CustomFrame_app import views
 from CustomFrame_app.views import UserDetailView, UserListView, \
     ColorVariantDetailView, SizeVariantDetailView, FinishingVariantDetailView, HangingVariantDetailView, UserManageView, \
-    FrameDetailView, BulkVariantCreateView, UploadCroppedImageView, AddToCartView, CartDetailView, CartItemDetailView, \
+    FrameDetailView, BulkVariantCreateView, UploadCroppedImageView, AddToCartView, \
     upload_image, UserRegistrationView, FrameCategoriesListCreateView, \
     FrameListCreateView, FrameCategoriesDetailView, SavedItemView, MackBoardListCreateView, MackBoardDetailView, \
     CurrentUserView, MugListCreateView, CapListCreateView, TshirtListCreateView, TileListCreateView, PenListCreateView, \
-    GiftOrderCreateView, MackBoardColorVariantListCreateView, PrintTypeView, PrintSizeView, PaperTypeView, \
-    LaminationTypeView, DocumentPrintOrderView, DocumentPrintOrderDetailView, update_document_print_orders_status, \
-    update_gift_orders_status, update_saved_items_status, send_order_confirmation
+    MackBoardColorVariantListCreateView, PrintTypeView, PrintSizeView, PaperTypeView, \
+    LaminationTypeView, update_document_print_orders_status, \
+    update_gift_orders_status, update_saved_items_status, \
+    DocumentPrintOrderView, DocumentPrintOrderDetailView, TshirtDetailView, \
+    TshirtBulkVariantCreateView, TshirtColorVariantDetailView, TshirtSizeVariantDetailView, GiftOrderCreateView, \
+    GiftOrderListView, OrderView, OrderDetailView, GiftOrderDetailView
 
 urlpatterns = [
     path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
@@ -35,18 +38,24 @@ urlpatterns = [
     path('upload-image/', upload_image, name='upload_image'),
     path('upload-cropped-image/', UploadCroppedImageView.as_view(), name='upload-cropped-image'),
     path('add-to-cart/', AddToCartView.as_view(), name='add_to_cart'),
-    path('cart/', CartDetailView.as_view(), name='cart_detail'),
-    path('cart/items/<int:item_id>/', CartItemDetailView.as_view(), name='cart_item_detail'),
     path('save-items/', SavedItemView.as_view(), name='save_items'),
     path('save-items/<int:pk>/', SavedItemView.as_view(), name='save_item_detail'),
     path('mugs/', MugListCreateView.as_view(), name='mug-list-create'),
     path('caps/', CapListCreateView.as_view(), name='cap-list-create'),
     path('tshirts/', TshirtListCreateView.as_view(), name='tshirt-list-create'),
+    path('tshirts/<int:tshirt_id>/', TshirtDetailView.as_view(), name='tshirt-detail'),
+    path('tshirts/<int:tshirt_id>/variants/', TshirtBulkVariantCreateView.as_view(), name='tshirt-bulk-variant-create'),
+    path('tshirt_color_variants/<int:variant_id>/', TshirtColorVariantDetailView.as_view(),
+         name='tshirt-color-variant-detail'),
+    path('tshirt_size_variants/<int:variant_id>/', TshirtSizeVariantDetailView.as_view(),
+         name='tshirt-size-variant-detail'),
     path('tiles/', TileListCreateView.as_view(), name='tile-list-create'),
     path('pens/', PenListCreateView.as_view(), name='pen-list-create'),
     path('gift-orders/', GiftOrderCreateView.as_view(), name='gift-order-create'),
-    path('gift-orders/list/', views.GiftOrderListView.as_view(), name='gift-order-list'),
-    path('gift-orders/<int:pk>/', views.GiftOrderCreateView.as_view(), name='gift-order-delete'),
+    path('gift-orders/list/', GiftOrderListView.as_view(), name='gift-order-list'),
+    path('gift-orders/<int:pk>/', GiftOrderDetailView.as_view(), name='gift-order-detail'),
+    path('api/orders/', OrderView.as_view(), name='order_create'),
+    path('api/orders/<int:pk>/', OrderDetailView.as_view(), name='order_detail'),
     path('api/print-types/', PrintTypeView.as_view(), name='print_type_list_create'),
     path('api/print-types/<int:pk>/', PrintTypeView.as_view(), name='print_type_detail'),
     path('api/print-sizes/', PrintSizeView.as_view(), name='print_size_list_create'),
@@ -56,10 +65,20 @@ urlpatterns = [
     path('api/lamination-types/', LaminationTypeView.as_view(), name='lamination_type_list_create'),
     path('api/lamination-types/<int:pk>/', LaminationTypeView.as_view(), name='lamination_type_detail'),
     path('api/document-print-orders/', DocumentPrintOrderView.as_view(), name='document_print_order_create'),
-    path('api/document-print-orders/<int:pk>/', DocumentPrintOrderDetailView.as_view(),name='document_print_order_detail'),
-    path('send-order-confirmation/', send_order_confirmation, name='send_order_confirmation'),
-    path('update-saved-items-status/', update_saved_items_status, name='update_saved_items_status'),
-    path('update-gift-orders-status/', update_gift_orders_status, name='update_gift_orders_status'),
-    path('update-document-print-orders-status/', update_document_print_orders_status, name='update_document_print_orders_status')
+    path('api/document-print-orders/<int:pk>/', DocumentPrintOrderDetailView.as_view(),
+         name='document_print_order_detail'),
+    path('send-order-confirmation/', views.send_order_confirmation, name='send_order_confirmation'),
+    path('update-saved-items-status/', views.update_saved_items_status, name='update_saved_items_status'),
+    path('update-gift-orders-status/', views.update_gift_orders_status, name='update_gift_orders_status'),
+    path('update-document-print-orders-status/', views.update_document_print_orders_status,
+         name='update_document_print_orders_status'),
+    path('update-simple-document-orders-status/', views.update_simple_document_orders_status,
+         name='update_simple_document_orders_status'),
 ]
+
+
+
+
+
+
 

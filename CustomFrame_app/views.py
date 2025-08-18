@@ -1,6 +1,7 @@
 import logging
 import os
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.core.mail import send_mail
 from django.db.models import ProtectedError
@@ -11,6 +12,7 @@ from django.contrib.auth import authenticate, login
 from rest_framework import status, generics, views, serializers, viewsets, permissions
 from rest_framework.decorators import api_view
 from rest_framework.exceptions import ValidationError, PermissionDenied
+from rest_framework.generics import ListAPIView
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -18,15 +20,17 @@ from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser, I
 from rest_framework_simplejwt.tokens import RefreshToken
 from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
-    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, MackBoardColorVariant, \
-    LaminationType, PaperType, PrintSize, PrintType, DocumentPrintOrder
+    CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, MackBoardColorVariant, \
+    LaminationType, PaperType, PrintSize, PrintType, DocumentPrintOrder, TshirtSizeVariant, TshirtColorVariant, \
+    GiftOrder, DocOrder, Order
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
     CartItemSerializer, CartItemUpdateSerializer, FrameCategoriesSerializer, MackBoardSerializer, SavedItemSerializer,
-    MugSerializer, CapSerializer, TshirtSerializer, TileSerializer, PenSerializer, GiftOrderSerializer,
+    MugSerializer, CapSerializer, TileSerializer, PenSerializer,
     MackBoardColorVariantSerializer, DocumentPrintOrderSerializer, LaminationTypeSerializer, PaperTypeSerializer,
-    PrintSizeSerializer, PrintTypeSerializer,
+    PrintSizeSerializer, PrintTypeSerializer, TshirtSizeVariantSerializer, TshirtColorVariantSerializer,
+    TshirtSerializer, GiftOrderSerializer, OrderSerializer,
 )
 import json
 
@@ -89,7 +93,10 @@ def user_login(request):
                     'phone': user.phone,
                     'email': user.email,
                     'is_blocked': user.is_blocked,
+                    'is_staff': user.is_staff,  # Add is_staff
                 },
+                'access': 'your_jwt_access_token',  # Replace with actual JWT token
+                'refresh': 'your_jwt_refresh_token',  # Replace with actual JWT token
             }
             return JsonResponse(data)
         else:
@@ -109,6 +116,7 @@ class CurrentUserView(APIView):
             'phone': user.phone,
             'type': user.role,  # Map role to type
             'is_blocked': user.is_blocked,
+            'is_staff': user.is_staff,
         })
 
 class FrameCategoriesListCreateView(generics.ListCreateAPIView):
@@ -485,37 +493,6 @@ class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
         except ProtectedError:
             raise ValidationError("Cannot delete MackBoard with associated dependencies")
 
-class CartDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        cart, created = Cart.objects.get_or_create(user=request.user)
-        items = cart.items.all()
-        serializer = CartItemSerializer(items, many=True, context={'request': request})
-        return Response(serializer.data)
-
-class CartItemDetailView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def put(self, request, item_id):
-        try:
-            cart_item = CartItem.objects.get(id=item_id, cart__user=request.user)
-            serializer = CartItemUpdateSerializer(cart_item, data=request.data, partial=True)
-            if serializer.is_valid():
-                serializer.save()
-                cart_item.save()  # Recalculate total_price
-                return Response(CartItemSerializer(cart_item, context={'request': request}).data)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        except CartItem.DoesNotExist:
-            return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
-
-    def delete(self, request, item_id):
-        try:
-            cart_item = CartItem.objects.get(id=item_id, cart__user=request.user)
-            cart_item.delete()
-            return Response({"message": "Cart item deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
-        except CartItem.DoesNotExist:
-            return Response({"error": "Cart item not found"}, status=status.HTTP_404_NOT_FOUND)
 
 logger = logging.getLogger(__name__)
 
@@ -575,12 +552,6 @@ class SavedItemView(APIView):
         except SavedItem.DoesNotExist:
             return Response({"error": "Item not found"}, status=status.HTTP_404_NOT_FOUND)
 
-from django.http import JsonResponse
-from django.core.mail import send_mail
-from rest_framework.decorators import api_view
-from rest_framework import status
-from .models import SavedItem, GiftOrder, DocumentPrintOrder
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -598,45 +569,64 @@ def send_order_confirmation(request):
 
         if not all([customer_email, customer_name, order_details, total_cost]):
             logger.error("Missing required fields in send_order_confirmation")
-            return JsonResponse(
+            return Response(
                 {'error': 'Missing required fields'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        logger.debug(f"Received order_details: {order_details}")  # Debug log
 
         # Plain text email for fallback
         plain_message = f"Dear {customer_name},\n\nYour order has been confirmed!\n\nOrder Details:\n"
         for item in order_details:
             if item.get('type') == 'gift':
-                plain_message += f"- Gift Item: {item['content_type']} (ID: {item['object_id']}), Price: ${item['price']}\n"
+                object_id = item.get('object_id', 'N/A')  # Fallback for object_id
+                plain_message += f"- Gift Item: {item.get('content_type', 'N/A')} (ID: {object_id}), Price: ${item.get('price', '0.00')}\n"
                 if item.get('imageUrl'):
-                    plain_message += f"  Image: {item['imageUrl']}\n"
+                    plain_message += f" Image: {item['imageUrl']}\n"
             elif item.get('type') == 'document':
                 plain_message += (
                     f"- Document Print:\n"
-                    f"  Print Type: {item['print_type']}\n"
-                    f"  Print Size: {item['print_size']}\n"
-                    f"  Paper Type: {item['paper_type']}\n"
-                    f"  Quantity: {item['quantity']}\n"
-                    f"  Lamination: {item['lamination']}\n"
-                    f"  Lamination Type: {item['lamination_type']}\n"
-                    f"  Delivery Method: {item['delivery_method']}\n"
-                    f"  Delivery Charge: ${item['delivery_charge']}\n"
-                    f"  Price: ${item['price']}\n"
+                    f" Print Type: {item.get('print_type', 'N/A')}\n"
+                    f" Print Size: {item.get('print_size', 'N/A')}\n"
+                    f" Paper Type: {item.get('paper_type', 'N/A')}\n"
+                    f" Quantity: {item.get('quantity', 'N/A')}\n"
+                    f" Lamination: {item.get('lamination', 'No')}\n"
+                    f" Lamination Type: {item.get('lamination_type', 'N/A')}\n"
+                    f" Delivery Method: {item.get('delivery_method', 'N/A')}\n"
+                    f" Delivery Charge: ${item.get('delivery_charge', '0.00')}\n"
+                    f" Price: ${item.get('price', '0.00')}\n"
                 )
                 if item.get('imageUrl'):
-                    plain_message += f"  Image: {item['imageUrl']}\n"
+                    plain_message += f" Image: {item['imageUrl']}\n"
+            elif item.get('type') == 'simple_document':
+                plain_message += (
+                    f"- Simple Document Print:\n"
+                    f" Print Type: {item.get('print_type', 'N/A')}\n"
+                    f" Print Size: {item.get('print_size', 'N/A')}\n"
+                    f" Paper Type: {item.get('paper_type', 'N/A')}\n"
+                    f" Quantity: {item.get('quantity', 'N/A')}\n"
+                    f" Lamination: {item.get('lamination', 'No')}\n"
+                    f" Lamination Type: {item.get('lamination_type', 'N/A')}\n"
+                    f" Delivery Option: {item.get('delivery_option', 'N/A')}\n"
+                    f" Address: {item.get('address', 'N/A')}\n"
+                    f" Files: {', '.join(item.get('files', [])) if item.get('files') else 'None'}\n"
+                    f" Price: ${item.get('price', '0.00')}\n"
+                )
+                if item.get('imageUrl'):
+                    plain_message += f" Image: {item['imageUrl']}\n"
             else:
                 plain_message += (
-                    f"- Frame: {item['frame']}, "
-                    f"Print Size: {item['printSize']}, "
-                    f"Media Type: {item['mediaType']}, "
-                    f"Paper Type: {item['paperType']}, "
-                    f"Fit: {item['fit']}, "
-                    f"Mack Boards: {item['mackBoards']}, "
-                    f"Price: ${item['price']}\n"
+                    f"- Frame: {item.get('frame', 'None')}, "
+                    f"Print Size: {item.get('printSize', 'N/A')}, "
+                    f"Media Type: {item.get('mediaType', 'None')}, "
+                    f"Paper Type: {item.get('paperType', 'None')}, "
+                    f"Fit: {item.get('fit', 'None')}, "
+                    f"Mack Boards: {item.get('mackBoards', 'None')}, "
+                    f"Price: ${item.get('price', '0.00')}\n"
                 )
                 if item.get('imageUrl'):
-                    plain_message += f"  Image: {item['imageUrl']}\n"
+                    plain_message += f" Image: {item['imageUrl']}\n"
         plain_message += f"\nTotal Cost: ${total_cost}\nPhone: {customer_phone}\n"
         if custom_message:
             plain_message += f"\nCustom Message: {custom_message}\n"
@@ -648,16 +638,16 @@ def send_order_confirmation(request):
             image_html = ""
             if item.get('imageUrl') and item['imageUrl'] != 'https://via.placeholder.com/100x100?text=Image+Not+Found':
                 image_html = f'<img src="{item["imageUrl"]}" alt="Item Image" style="max-width: 100px; max-height: 100px; object-fit: cover;" />'
-
             if item.get('type') == 'gift':
+                object_id = item.get('object_id', 'N/A')  # Fallback for object_id
                 html_rows += f"""
                     <tr>
                         <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Gift Item'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>Type:</strong> {item['content_type']}<br>
-                            <strong>ID:</strong> {item['object_id']}
+                            <strong>Type:</strong> {item.get('content_type', 'N/A')}<br>
+                            <strong>ID:</strong> {object_id}
                         </td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item.get('price', '0.00')}</td>
                     </tr>
                 """
             elif item.get('type') == 'document':
@@ -665,16 +655,34 @@ def send_order_confirmation(request):
                     <tr>
                         <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Document Print'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>Print Type:</strong> {item['print_type']}<br>
-                            <strong>Print Size:</strong> {item['print_size']}<br>
-                            <strong>Paper Type:</strong> {item['paper_type']}<br>
-                            <strong>Quantity:</strong> {item['quantity']}<br>
-                            <strong>Lamination:</strong> {item['lamination']}<br>
-                            <strong>Lamination Type:</strong> {item['lamination_type']}<br>
-                            <strong>Delivery Method:</strong> {item['delivery_method']}<br>
-                            <strong>Delivery Charge:</strong> ${item['delivery_charge']}
+                            <strong>Print Type:</strong> {item.get('print_type', 'N/A')}<br>
+                            <strong>Print Size:</strong> {item.get('print_size', 'N/A')}<br>
+                            <strong>Paper Type:</strong> {item.get('paper_type', 'N/A')}<br>
+                            <strong>Quantity:</strong> {item.get('quantity', 'N/A')}<br>
+                            <strong>Lamination:</strong> {item.get('lamination', 'No')}<br>
+                            <strong>Lamination Type:</strong> {item.get('lamination_type', 'N/A')}<br>
+                            <strong>Delivery Method:</strong> {item.get('delivery_method', 'N/A')}<br>
+                            <strong>Delivery Charge:</strong> ${item.get('delivery_charge', '0.00')}
                         </td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item.get('price', '0.00')}</td>
+                    </tr>
+                """
+            elif item.get('type') == 'simple_document':
+                html_rows += f"""
+                    <tr>
+                        <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Simple Document Print'}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">
+                            <strong>Print Type:</strong> {item.get('print_type', 'N/A')}<br>
+                            <strong>Print Size:</strong> {item.get('print_size', 'N/A')}<br>
+                            <strong>Paper Type:</strong> {item.get('paper_type', 'N/A')}<br>
+                            <strong>Quantity:</strong> {item.get('quantity', 'N/A')}<br>
+                            <strong>Lamination:</strong> {item.get('lamination', 'No')}<br>
+                            <strong>Lamination Type:</strong> {item.get('lamination_type', 'N/A')}<br>
+                            <strong>Delivery Option:</strong> {item.get('delivery_option', 'N/A')}<br>
+                            <strong>Address:</strong> {item.get('address', 'N/A')}<br>
+                            <strong>Files:</strong> {', '.join(item.get('files', [])) if item.get('files') else 'None'}
+                        </td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item.get('price', '0.00')}</td>
                     </tr>
                 """
             else:
@@ -682,21 +690,21 @@ def send_order_confirmation(request):
                     <tr>
                         <td style="border: 1px solid #ddd; padding: 8px;">{image_html or 'Framed Item'}</td>
                         <td style="border: 1px solid #ddd; padding: 8px;">
-                            <strong>Frame:</strong> {item['frame']}<br>
-                            <strong>Print Size:</strong> {item['printSize']}<br>
-                            <strong>Media Type:</strong> {item['mediaType']}<br>
-                            <strong>Paper Type:</strong> {item['paperType']}<br>
-                            <strong>Fit:</strong> {item['fit']}<br>
-                            <strong>Border Depth:</strong> {item['borderDepth']}<br>
-                            <strong>Border Color:</strong> {item['borderColor']}<br>
-                            <strong>Frame Depth:</strong> {item['frameDepth']}<br>
-                            <strong>Color Variant:</strong> {item['color']}<br>
-                            <strong>Size Variant:</strong> {item['size']}<br>
-                            <strong>Finish Variant:</strong> {item['finish']}<br>
-                            <strong>Hanging Variant:</strong> {item['hanging']}<br>
-                            <strong>Mack Boards:</strong> {item['mackBoards']}
+                            <strong>Frame:</strong> {item.get('frame', 'None')}<br>
+                            <strong>Print Size:</strong> {item.get('printSize', 'N/A')}<br>
+                            <strong>Media Type:</strong> {item.get('mediaType', 'None')}<br>
+                            <strong>Paper Type:</strong> {item.get('paperType', 'None')}<br>
+                            <strong>Fit:</strong> {item.get('fit', 'None')}<br>
+                            <strong>Border Depth:</strong> {item.get('borderDepth', 'None')}<br>
+                            <strong>Border Color:</strong> {item.get('borderColor', 'None')}<br>
+                            <strong>Frame Depth:</strong> {item.get('frameDepth', 'None')}<br>
+                            <strong>Color Variant:</strong> {item.get('color', 'None')}<br>
+                            <strong>Size Variant:</strong> {item.get('size', 'None')}<br>
+                            <strong>Finish Variant:</strong> {item.get('finish', 'None')}<br>
+                            <strong>Hanging Variant:</strong> {item.get('hanging', 'None')}<br>
+                            <strong>Mack Boards:</strong> {item.get('mackBoards', 'None')}
                         </td>
-                        <td style="border: 1px solid #ddd; padding: 8px;">${item['price']}</td>
+                        <td style="border: 1px solid #ddd; padding: 8px;">${item.get('price', '0.00')}</td>
                     </tr>
                 """
 
@@ -749,62 +757,61 @@ def send_order_confirmation(request):
         SavedItem.objects.filter(user=request.user).update(status='paid')
         GiftOrder.objects.filter(user=request.user).update(status='paid')
         DocumentPrintOrder.objects.filter(user=request.user).update(status='paid')
+        DocOrder.objects.filter(user=request.user).update(status='paid')
 
         logger.info(f"Order confirmation email sent to {customer_email}")
-        return JsonResponse({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Order confirmation sent and status updated'}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error sending order confirmation: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-@api_view(['POST'])
-def update_document_print_orders_status(request):
-    try:
-        order_ids = request.data.get('orderIds', [])
-        if not order_ids:
-            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
-        DocumentPrintOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
-        return JsonResponse({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
-    except Exception as e:
-        logger.error(f"Error updating document print orders status: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 def update_saved_items_status(request):
     try:
         order_ids = request.data.get('orderIds', [])
         if not order_ids:
-            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
         SavedItem.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
-        return JsonResponse({'message': 'Saved items status updated to paid'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Saved items status updated to paid'}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error updating saved items status: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 def update_gift_orders_status(request):
     try:
         order_ids = request.data.get('orderIds', [])
         if not order_ids:
-            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
         GiftOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
-        return JsonResponse({'message': 'Gift orders status updated to paid'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Gift orders status updated to paid'}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error updating gift orders status: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
 def update_document_print_orders_status(request):
     try:
         order_ids = request.data.get('orderIds', [])
         if not order_ids:
-            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
         DocumentPrintOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
-        return JsonResponse({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
+        return Response({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
     except Exception as e:
         logger.error(f"Error updating document print orders status: {str(e)}")
-        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@api_view(['POST'])
+def update_simple_document_orders_status(request):
+    try:
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return Response({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        DocOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')  # Use DocOrder
+        return Response({'message': 'Simple document orders status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error updating simple document orders status: {str(e)}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class MugListCreateView(generics.ListCreateAPIView):
     queryset = Mug.objects.all()
@@ -862,6 +869,9 @@ class CapDetailView(generics.RetrieveUpdateDestroyAPIView):
         except ProtectedError:
             raise ValidationError("Cannot delete Cap with associated dependencies")
 
+
+logger = logging.getLogger(__name__)
+
 class TshirtListCreateView(generics.ListCreateAPIView):
     queryset = Tshirt.objects.all()
     serializer_class = TshirtSerializer
@@ -869,26 +879,152 @@ class TshirtListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can create Tshirts")
-        serializer.save()
+            return Response(
+                {"error": "Only admins can create T-shirts"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        serializer.save(created_by=self.request.user)
 
-class TshirtDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = Tshirt.objects.all()
-    serializer_class = TshirtSerializer
+class TshirtDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def perform_update(self, serializer):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can update Tshirts")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can delete Tshirts")
+    def get(self, request, tshirt_id):
         try:
-            instance.delete()
-        except ProtectedError:
-            raise ValidationError("Cannot delete Tshirt with associated dependencies")
+            tshirt = Tshirt.objects.get(id=tshirt_id)
+            serializer = TshirtSerializer(tshirt, context={'request': request})
+            return Response(serializer.data)
+        except Tshirt.DoesNotExist:
+            return Response({"error": "T-shirt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, tshirt_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update T-shirts"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            tshirt = Tshirt.objects.get(id=tshirt_id)
+            serializer = TshirtSerializer(tshirt, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Tshirt.DoesNotExist:
+            return Response({"error": "T-shirt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, tshirt_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete T-shirts"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            tshirt = Tshirt.objects.get(id=tshirt_id)
+            tshirt.delete()
+            return Response({"message": "T-shirt deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Tshirt.DoesNotExist:
+            return Response({"error": "T-shirt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class TshirtBulkVariantCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, tshirt_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can create variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            tshirt = Tshirt.objects.get(id=tshirt_id)
+        except Tshirt.DoesNotExist:
+            return Response({"error": "T-shirt not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        variants_data = request.data.get('variants', [])
+        if isinstance(variants_data, str):
+            try:
+                variants_data = json.loads(variants_data)
+            except json.JSONDecodeError:
+                return Response({"error": "Variants must be a valid JSON list"}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(variants_data, list):
+            return Response({"error": "Variants must be provided as a list"}, status=status.HTTP_400_BAD_REQUEST)
+
+        created_variants = []
+        errors = []
+
+        for variant_data in variants_data:
+            variant_type = variant_data.get('variant_type')
+            variant_form_data = request.FILES.get(variant_data.get('image_key')) if variant_data.get('image_key') else None
+            if variant_form_data:
+                variant_data['image'] = variant_form_data
+
+            if not variant_type:
+                errors.append({"error": "variant_type is required"})
+                continue
+
+            if variant_type == 'color':
+                serializer = TshirtColorVariantSerializer(data=variant_data, context={'request': request})
+            elif variant_type == 'size':
+                serializer = TshirtSizeVariantSerializer(data=variant_data, context={'request': request})
+            else:
+                errors.append({"error": f"Invalid variant type: {variant_type}"})
+                continue
+
+            if serializer.is_valid():
+                try:
+                    instance = serializer.save(tshirt=tshirt)
+                    created_variants.append(serializer.data)
+                except ValidationError as e:
+                    errors.append({"error": str(e)})
+            else:
+                errors.append(serializer.errors)
+
+        if errors:
+            return Response({"created": created_variants, "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(created_variants, status=status.HTTP_201_CREATED)
+
+class TshirtColorVariantDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, variant_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            variant = TshirtColorVariant.objects.get(id=variant_id)
+            serializer = TshirtColorVariantSerializer(variant, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TshirtColorVariant.DoesNotExist:
+            return Response({"error": "Color variant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, variant_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            variant = TshirtColorVariant.objects.get(id=variant_id)
+            variant.delete()
+            return Response({"message": "Color variant deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except TshirtColorVariant.DoesNotExist:
+            return Response({"error": "Color variant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+class TshirtSizeVariantDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, variant_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            variant = TshirtSizeVariant.objects.get(id=variant_id)
+            serializer = TshirtSizeVariantSerializer(variant, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except TshirtSizeVariant.DoesNotExist:
+            return Response({"error": "Size variant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, variant_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            variant = TshirtSizeVariant.objects.get(id=variant_id)
+            variant.delete()
+            return Response({"message": "Size variant deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except TshirtSizeVariant.DoesNotExist:
+            return Response({"error": "Size variant not found"}, status=status.HTTP_404_NOT_FOUND)
 
 class TileListCreateView(generics.ListCreateAPIView):
     queryset = Tile.objects.all()
@@ -947,34 +1083,23 @@ class PenDetailView(generics.RetrieveUpdateDestroyAPIView):
             raise ValidationError("Cannot delete Pen with associated dependencies")
 
 
+logger = logging.getLogger(__name__)
+
 class GiftOrderCreateView(APIView):
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    serializer_class = GiftOrderSerializer
 
     def post(self, request):
-        logger.debug(f"Received POST data: {request.data}")
-        serializer = GiftOrderSerializer(data=request.data, context={'request': request})
+        serializer = self.serializer_class(data=request.data, context={'request': request})
         if serializer.is_valid():
+            # Set the user field to the authenticated user
             serializer.save(user=request.user)
-            logger.info(f"GiftOrder created successfully for user {request.user.username}")
+            logger.info(f"Gift order created by user {request.user.username}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
-        logger.error(f"Serializer errors: {serializer.errors}")
+        logger.error(f"Error creating gift order: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request, pk):
-        try:
-            if request.user.is_staff or request.user.is_superuser:
-                item = GiftOrder.objects.get(pk=pk)
-            else:
-                item = GiftOrder.objects.get(pk=pk, user=request.user)
-            item.delete()
-            logger.info(f"GiftOrder {pk} deleted by user {request.user.username}")
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except GiftOrder.DoesNotExist:
-            logger.error(f"GiftOrder {pk} not found")
-            return Response({"error": "Gift order not found"}, status=status.HTTP_404_NOT_FOUND)
-
-class GiftOrderListView(generics.ListAPIView):
+class GiftOrderListView(ListAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = GiftOrderSerializer
 
@@ -989,6 +1114,29 @@ class GiftOrderListView(generics.ListAPIView):
         serializer = self.get_serializer(queryset, many=True, context={'request': request})
         logger.info(f"Retrieved {len(queryset)} gift orders for user {request.user.username}")
         return Response(serializer.data)
+
+class GiftOrderDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            order = GiftOrder.objects.get(pk=pk)
+            if not request.user.is_staff and order.user != request.user:
+                logger.warning(f"User {request.user.username} attempted to delete order {pk} without permission")
+                return Response(
+                    {"detail": "You do not have permission to delete this order."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            order.delete()
+            logger.info(f"Gift order {pk} deleted by user {request.user.username}")
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except GiftOrder.DoesNotExist:
+            logger.error(f"Gift order {pk} not found for deletion")
+            return Response(
+                {"detail": "Order not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
 
 class PrintTypeView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1150,23 +1298,92 @@ class LaminationTypeView(APIView):
         lamination_type.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-class DocumentPrintOrderView(APIView):
+
+class OrderView(APIView):
     permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def get(self, request):
-        if request.user.is_staff or request.user.is_superuser:
-            orders = DocumentPrintOrder.objects.all()  # Admins see all orders
+        if request.user.is_staff:
+            orders = DocOrder.objects.all().order_by('-created_at')
         else:
-            orders = DocumentPrintOrder.objects.filter(user=request.user)  # Non-admins see only their orders
-        serializer = DocumentPrintOrderSerializer(orders, many=True)
+            orders = DocOrder.objects.filter(user=request.user).order_by('-created_at')
+        serializer = OrderSerializer(orders, many=True)
         return Response(serializer.data)
 
     def post(self, request):
-        serializer = DocumentPrintOrderSerializer(data=request.data)
+        serializer = OrderSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
-            serializer.save(user=request.user)
+            serializer.save()
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class OrderDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            order = DocOrder.objects.get(pk=pk)
+            if not request.user.is_staff and order.user != request.user:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            order.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except DocOrder.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+
+class DocumentPrintOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        logger.debug("Raw request data: %s", dict(request.data))
+        logger.debug("Raw request files: %s", dict(request.FILES))
+
+        # Prepare data for serializer
+        data = {
+            'delivery_method': request.data.get('delivery_method'),
+            'delivery_charge': request.data.get('delivery_charge', '0'),
+            'address': request.data.get('address', ''),
+            'document_files': []
+        }
+
+        # Parse document_files
+        index = 0
+        while f'document_files[{index}][file]' in request.FILES:
+            file_data = {
+                'file': request.FILES.get(f'document_files[{index}][file]'),
+                'print_type': request.data.get(f'document_files[{index}][print_type]'),
+                'print_size': request.data.get(f'document_files[{index}][print_size]'),
+                'quantity': request.data.get(f'document_files[{index}][quantity]', '1'),
+                'paper_type': request.data.get(f'document_files[{index}][paper_type]'),
+                'lamination': request.data.get(f'document_files[{index}][lamination]') == 'true',
+                'lamination_type': request.data.get(f'document_files[{index}][lamination_type]', None)
+            }
+            data['document_files'].append(file_data)
+            index += 1
+
+        if not data['document_files']:
+            logger.error("No document files provided in request")
+            return Response({"detail": "At least one document file is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        logger.debug("Processed data for serializer: %s", data)
+
+        serializer = DocumentPrintOrderSerializer(data=data, context={'request': request})
+        if serializer.is_valid():
+            try:
+                order = serializer.save()
+                logger.info("Print order saved successfully for user %s with ID %s", request.user.username, order.id)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except serializers.ValidationError as e:
+                logger.error("Validation error: %s", str(e))
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as e:
+                logger.error("Unexpected error saving order: %s", str(e))
+                return Response({"detail": f"Unexpected error: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            logger.error("Serializer errors: %s", serializer.errors)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class DocumentPrintOrderDetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -1180,3 +1397,27 @@ class DocumentPrintOrderDetailView(APIView):
             return Response(status=status.HTTP_204_NO_CONTENT)
         except DocumentPrintOrder.DoesNotExist:
             return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+@api_view(['POST'])
+def update_document_print_orders_status(request):
+    try:
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        DocumentPrintOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
+        return JsonResponse({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error updating document print orders status: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+def update_document_print_orders_status(request):
+    try:
+        order_ids = request.data.get('orderIds', [])
+        if not order_ids:
+            return JsonResponse({'error': 'No order IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        DocumentPrintOrder.objects.filter(user=request.user, id__in=order_ids).update(status='paid')
+        return JsonResponse({'message': 'Document print orders status updated to paid'}, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.error(f"Error updating document print orders status: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

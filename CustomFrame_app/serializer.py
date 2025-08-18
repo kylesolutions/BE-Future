@@ -1,12 +1,16 @@
 import json
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError, transaction
 from rest_framework import serializers, status
 from rest_framework.response import Response
 import logging
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
-    CartItem, FrameCategories, MackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, GiftOrder, \
-    MackBoardColorVariant, SavedItemMackBoard, PrintType, PrintSize, PaperType, LaminationType, DocumentPrintOrder
+    CartItem, FrameCategories, MackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, \
+    MackBoardColorVariant, SavedItemMackBoard, PrintType, PrintSize, PaperType, LaminationType, DocumentPrintOrder, \
+    DocumentFile, TshirtColorVariant, TshirtSizeVariant, GiftOrder, DocOrder, OrderFile
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -400,18 +404,54 @@ class CapSerializer(serializers.ModelSerializer):
             return f"{settings.MEDIA_URL}{obj.image}"
         return None
 
+class TshirtColorVariantSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_null=True)
+    color_name = serializers.CharField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        model = TshirtColorVariant
+        fields = ['id', 'color_name', 'image', 'price']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if instance.image and request:
+            representation['image'] = request.build_absolute_uri(instance.image.url)
+        return representation
+
+class TshirtSizeVariantSerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_null=True)
+    size_name = serializers.CharField()
+    price = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        model = TshirtSizeVariant
+        fields = ['id', 'size_name', 'image', 'price']
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if instance.image and request:
+            representation['image'] = request.build_absolute_uri(instance.image.url)
+        return representation
+
 class TshirtSerializer(serializers.ModelSerializer):
-    image = serializers.ImageField(allow_null=True, required=False)
-    image_url = serializers.SerializerMethodField()
+    color_variants = TshirtColorVariantSerializer(many=True, read_only=True)
+    size_variants = TshirtSizeVariantSerializer(many=True, read_only=True)
+    image = serializers.ImageField(required=False, allow_null=True)
 
     class Meta:
         model = Tshirt
-        fields = ['id', 'tshirt_name', 'price', 'image', 'image_url']
+        fields = ['id', 'tshirt_name', 'image', 'color_variants', 'size_variants']
 
-    def get_image_url(self, obj):
-        if obj.image:
-            return f"{settings.MEDIA_URL}{obj.image}"
-        return None
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        if instance.image and request:
+            representation['image'] = request.build_absolute_uri(instance.image.url)
+        return representation
+
 
 class TileSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(allow_null=True, required=False)
@@ -440,96 +480,86 @@ class PenSerializer(serializers.ModelSerializer):
         return None
 
 class GiftOrderSerializer(serializers.ModelSerializer):
-    content_type = serializers.CharField()
-    uploaded_image = serializers.ImageField()
+    tshirt = serializers.PrimaryKeyRelatedField(queryset=Tshirt.objects.all(), required=False, allow_null=True)
+    mug = serializers.PrimaryKeyRelatedField(queryset=Mug.objects.all(), required=False, allow_null=True)
+    cap = serializers.PrimaryKeyRelatedField(queryset=Cap.objects.all(), required=False, allow_null=True)
+    tile = serializers.PrimaryKeyRelatedField(queryset=Tile.objects.all(), required=False, allow_null=True)
+    pen = serializers.PrimaryKeyRelatedField(queryset=Pens.objects.all(), required=False, allow_null=True)
+    tshirt_color_variant = serializers.PrimaryKeyRelatedField(
+        queryset=TshirtColorVariant.objects.all(), required=False, allow_null=True
+    )
+    tshirt_size_variant = serializers.PrimaryKeyRelatedField(
+        queryset=TshirtSizeVariant.objects.all(), required=False, allow_null=True
+    )
+    uploaded_image = serializers.ImageField(required=True)
     preview_image = serializers.ImageField(required=True)
-    size = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    content_type = serializers.SerializerMethodField()
+    object_name = serializers.SerializerMethodField()  # New field for item name
+    user = serializers.CharField(source='user.username', read_only=True)
 
     class Meta:
         model = GiftOrder
         fields = [
-            'id', 'user', 'content_type', 'object_id', 'uploaded_image',
-            'preview_image', 'size', 'image_position_x', 'image_position_y',
+            'id', 'user', 'tshirt', 'mug', 'cap', 'tile', 'pen',
+            'tshirt_color_variant', 'tshirt_size_variant',
+            'total_price', 'uploaded_image', 'preview_image',
+            'image_position_x', 'image_position_y',
             'image_scale_x', 'image_scale_y', 'image_rotation',
-            'total_price', 'created_at', 'status'
+            'status', 'content_type', 'object_name', 'created_at'
         ]
-        read_only_fields = ['id', 'user', 'created_at', 'status']
+        read_only_fields = ['user', 'created_at', 'content_type', 'object_name']
 
-    def validate_content_type(self, value):
-        valid_models = ['mug', 'tshirt', 'cap', 'tile', 'pen']
-        if not value:
-            raise serializers.ValidationError("Content type is required.")
-        if value.lower() not in valid_models:
-            raise serializers.ValidationError(
-                f"Invalid content type: '{value}'. Must be one of: {', '.join(valid_models)}"
-            )
-        try:
-            content_type = ContentType.objects.get(model=value.lower())
-            return content_type
-        except ContentType.DoesNotExist:
-            raise serializers.ValidationError(
-                f"Content type '{value}' does not exist in the database."
-            )
+    def get_content_type(self, obj):
+        if obj.tshirt:
+            return 'T-shirt'
+        elif obj.mug:
+            return 'Mug'
+        elif obj.cap:
+            return 'Cap'
+        elif obj.tile:
+            return 'Tile'
+        elif obj.pen:
+            return 'Pen'
+        return 'Unknown'
 
-    def validate_object_id(self, value):
-        if not value:
-            raise serializers.ValidationError("Object ID is required.")
-        try:
-            value = int(value)
-            if value <= 0:
-                raise serializers.ValidationError("Object ID must be a positive integer.")
-        except (TypeError, ValueError):
-            raise serializers.ValidationError("Object ID must be a valid integer.")
-        return value
+    def get_object_name(self, obj):
+        if obj.tshirt:
+            return obj.tshirt.tshirt_name
+        elif obj.mug:
+            return obj.mug.mug_name
+        elif obj.cap:
+            return obj.cap.cap_name
+        elif obj.tile:
+            return obj.tile.tile_name
+        elif obj.pen:
+            return obj.pen.pen_name
+        return 'Unknown'
 
-    def validate_size(self, value):
-        valid_sizes = ['S', 'M', 'L', 'XL', 'XXL']
-        if value and value not in valid_sizes:
-            raise serializers.ValidationError(
-                f"Invalid T-shirt size: '{value}'. Must be one of: {', '.join(valid_sizes)}"
-            )
-        return value
-
-    def validate_total_price(self, value):
-        if value is None:
-            raise serializers.ValidationError("Total price is required.")
-        try:
-            value = float(value)
-            if value <= 0:
-                raise serializers.ValidationError("Total price must be greater than zero.")
-        except (TypeError, ValueError):
-            raise serializers.ValidationError("Total price must be a valid number.")
-        return value
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        request = self.context.get('request')
+        # Convert image paths to full URLs
+        for field in ['uploaded_image', 'preview_image']:
+            if representation.get(field) and request:
+                representation[field] = request.build_absolute_uri(representation[field])
+        return representation
 
     def validate(self, data):
-        logger.debug("Serializer input data: %s", data)
-        content_type = data.get('content_type')
-        object_id = data.get('object_id')
-        if content_type and object_id:
-            try:
-                model_class = content_type.model_class()
-                if not model_class.objects.filter(id=object_id).exists():
-                    raise serializers.ValidationError({
-                        'object_id': f"No {content_type.model} found with ID {object_id}."
-                    })
-            except Exception as e:
-                raise serializers.ValidationError({
-                    'object_id': f"Error validating object ID: {str(e)}"
-                })
-
-        if not data.get('uploaded_image'):
-            raise serializers.ValidationError({"uploaded_image": "An image is required."})
-        if not data.get('preview_image'):
-            raise serializers.ValidationError({"preview_image": "A preview image is required."})
-        if data.get('content_type') and data.get('content_type').model.lower() == 'tshirt' and not data.get('size', '').strip():
-            raise serializers.ValidationError({"size": "T-shirt size is required for T-shirt orders."})
-
+        gift_types = [data.get('tshirt'), data.get('mug'), data.get('cap'), data.get('tile'), data.get('pen')]
+        non_null_gifts = [gt for gt in gift_types if gt is not None]
+        if len(non_null_gifts) != 1:
+            raise serializers.ValidationError("Exactly one gift type (tshirt, mug, cap, tile, or pen) must be specified.")
+        if data.get('tshirt'):
+            if not data.get('tshirt_color_variant') or not data.get('tshirt_size_variant'):
+                raise serializers.ValidationError("T-shirt orders require both color and size variants.")
+            if data.get('tshirt_color_variant').tshirt != data.get('tshirt'):
+                raise serializers.ValidationError("T-shirt color variant must belong to the selected T-shirt.")
+            if data.get('tshirt_size_variant').tshirt != data.get('tshirt'):
+                raise serializers.ValidationError("T-shirt size variant must belong to the selected T-shirt.")
+        else:
+            if data.get('tshirt_color_variant') or data.get('tshirt_size_variant'):
+                raise serializers.ValidationError("Non-T-shirt orders cannot have T-shirt variants.")
         return data
-
-    def create(self, validated_data):
-        content_type = validated_data.pop('content_type')
-        validated_data['content_type'] = content_type
-        return super().create(validated_data)
 
 
 class PrintTypeSerializer(serializers.ModelSerializer):
@@ -575,42 +605,137 @@ class LaminationTypeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Lamination type with this name already exists.")
         return value
 
-class DocumentPrintOrderSerializer(serializers.ModelSerializer):
+class OrderFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OrderFile
+        fields = ['id', 'file', 'created_at']
+
+class OrderSerializer(serializers.ModelSerializer):
+    files = serializers.ListField(
+        child=serializers.FileField(),
+        min_length=1,
+        allow_empty=False,
+        write_only=True
+    )
+    files_data = OrderFileSerializer(source='files', many=True, read_only=True)
+    total_amount = serializers.DecimalField(read_only=True, max_digits=10, decimal_places=2)
+    user = serializers.CharField(source='user.username', read_only=True)
+    print_type_name = serializers.SerializerMethodField()
+    print_size_name = serializers.SerializerMethodField()
+    paper_type_name = serializers.SerializerMethodField()
+    lamination_type_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocOrder
+        fields = [
+            'id', 'user', 'print_type', 'print_type_name', 'print_size', 'print_size_name',
+            'paper_type', 'paper_type_name', 'lamination', 'lamination_type', 'lamination_type_name',
+            'delivery_option', 'address_city', 'address_pin', 'address_house_name',
+            'quantity', 'total_amount', 'created_at', 'files', 'files_data', 'status'
+        ]
+        read_only_fields = ['id', 'created_at', 'total_amount', 'files_data', 'user']
+
+    def get_print_type_name(self, obj):
+        return obj.print_type.name if obj.print_type else 'N/A'
+
+    def get_print_size_name(self, obj):
+        return obj.print_size.name if obj.print_size else 'N/A'
+
+    def get_paper_type_name(self, obj):
+        return obj.paper_type.name if obj.paper_type else 'N/A'
+
+    def get_lamination_type_name(self, obj):
+        return obj.lamination_type.name if obj.lamination_type else 'N/A'
+
+    def validate(self, data):
+        if data['delivery_option'] == 'delivery':
+            if not all([data.get('address_city'), data.get('address_pin'), data.get('address_house_name')]):
+                raise serializers.ValidationError("All address fields are required for delivery")
+        if data['lamination'] and not data.get('lamination_type'):
+            raise serializers.ValidationError("Lamination type is required when lamination is selected")
+        return data
+
+    def create(self, validated_data):
+        files = validated_data.pop('files')
+        total_amount = self.calculate_total_amount(validated_data)
+        validated_data['total_amount'] = total_amount
+        validated_data['user'] = self.context['request'].user
+        order = DocOrder.objects.create(**validated_data)
+        for file in files:
+            OrderFile.objects.create(order=order, file=file)
+        return order
+
+    def calculate_total_amount(self, data):
+        total = Decimal('0')
+        print_type = data['print_type']
+        print_size = data['print_size']
+        paper_type = data['paper_type']
+        total += print_type.price + print_size.price + paper_type.price
+        if data['lamination'] and data.get('lamination_type'):
+            lamination_type = data['lamination_type']
+            total += lamination_type.price
+        if data['delivery_option'] == 'delivery':
+            total += Decimal('5.00')  # Delivery charge
+        total *= Decimal(data['quantity'])
+        return total
+
+
+logger = logging.getLogger(__name__)
+
+class DocumentFileSerializer(serializers.ModelSerializer):
+    print_type = serializers.PrimaryKeyRelatedField(queryset=PrintType.objects.all())
+    print_size = serializers.PrimaryKeyRelatedField(queryset=PrintSize.objects.all())
+    paper_type = serializers.PrimaryKeyRelatedField(queryset=PaperType.objects.all())
+    lamination_type = serializers.PrimaryKeyRelatedField(queryset=LaminationType.objects.all(), allow_null=True)
     file = serializers.FileField()
-    print_type = serializers.PrimaryKeyRelatedField(queryset=PrintType.objects.all(), allow_null=False)
-    print_size = serializers.PrimaryKeyRelatedField(queryset=PrintSize.objects.all(), allow_null=False)
-    paper_type = serializers.PrimaryKeyRelatedField(queryset=PaperType.objects.all(), allow_null=False)
-    lamination_type = serializers.PrimaryKeyRelatedField(queryset=LaminationType.objects.all(), allow_null=True, required=False)
-    username = serializers.CharField(source='user.username', read_only=True)
-    user_id = serializers.IntegerField(source='user.id', read_only=True)
-    print_type_name = serializers.CharField(source='print_type.name', read_only=True)
-    print_size_name = serializers.CharField(source='print_size.name', read_only=True)
-    paper_type_name = serializers.CharField(source='paper_type.name', read_only=True)
-    lamination_type_name = serializers.CharField(source='lamination_type.name', read_only=True, allow_null=True)
-    address = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    class Meta:
+        model = DocumentFile
+        fields = ['file', 'print_type', 'print_size', 'quantity', 'paper_type', 'lamination', 'lamination_type']
+
+    def validate(self, data):
+        # Ensure lamination_type is provided if lamination is True
+        if data.get('lamination') and not data.get('lamination_type'):
+            raise serializers.ValidationError({"lamination_type": "Lamination type is required when lamination is enabled."})
+        return data
+
+class DocumentPrintOrderSerializer(serializers.ModelSerializer):
+    document_files = DocumentFileSerializer(many=True)
+    total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    user = serializers.PrimaryKeyRelatedField(read_only=True)
+    status = serializers.CharField(read_only=True)
 
     class Meta:
         model = DocumentPrintOrder
-        fields = [
-            'id', 'file', 'print_type', 'print_size', 'quantity', 'paper_type',
-            'delivery_method', 'delivery_charge', 'address', 'lamination', 'lamination_type',
-            'total_price', 'created_at', 'status', 'username', 'user_id',
-            'print_type_name', 'print_size_name', 'paper_type_name', 'lamination_type_name'
-        ]
-        read_only_fields = [
-            'id', 'total_price', 'created_at', 'status', 'username', 'user_id',
-            'print_type_name', 'print_size_name', 'paper_type_name', 'lamination_type_name'
-        ]
+        fields = ['user', 'delivery_method', 'delivery_charge', 'address', 'document_files', 'total_price', 'status']
+        read_only_fields = ['user', 'total_price', 'status']
 
     def validate(self, data):
-        logger.debug("Serializer input data: %s", data)
-        if not data.get('file'):
-            raise serializers.ValidationError({"file": "A file is required."})
-        if data.get('quantity', 0) < 1:
-            raise serializers.ValidationError({"quantity": "Quantity must be at least 1."})
-        if data.get('delivery_method') == 'Delivery' and not data.get('address', '').strip():
+        # Ensure at least one document file is provided
+        if not data.get('document_files'):
+            raise serializers.ValidationError({"document_files": "At least one document file is required."})
+        # Validate delivery_method and address
+        if data.get('delivery_method') == 'Delivery' and not data.get('address'):
             raise serializers.ValidationError({"address": "Delivery address is required for delivery method."})
-        if 'lamination_type' in data and (data['lamination_type'] == '' or data['lamination_type'] is None):
-            data['lamination_type'] = None
-            logger.debug("Converted lamination_type to None")
         return data
+
+    def create(self, validated_data):
+        logger.debug("Validated data: %s", validated_data)
+        document_files_data = validated_data.pop('document_files', [])
+        validated_data['user'] = self.context['request'].user
+        logger.debug("Creating DocumentPrintOrder with data: %s", validated_data)
+        try:
+            with transaction.atomic():
+                order = DocumentPrintOrder.objects.create(**validated_data)
+                logger.debug("Created order with ID: %s", order.id)
+                for file_data in document_files_data:
+                    logger.debug("Creating DocumentFile with data: %s", file_data)
+                    DocumentFile.objects.create(order=order, **file_data)
+                logger.debug("Calculating total_price for order ID: %s", order.id)
+                order.total_price = order.calculate_total_price()
+                order.save()
+                logger.debug("Final total_price: %s", order.total_price)
+                return order
+        except Exception as e:
+            logger.error("Error creating order: %s", str(e))
+            raise serializers.ValidationError({"detail": f"Failed to save order: {str(e)}"})

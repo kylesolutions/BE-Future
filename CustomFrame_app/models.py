@@ -7,6 +7,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.db.models import CharField
+from django.utils import timezone
 from django.utils.deconstruct import deconstructible
 
 
@@ -274,8 +275,46 @@ class Cap(models.Model):
 
 class Tshirt(models.Model):
     tshirt_name = models.CharField(max_length=100)
-    image = models.ImageField(upload_to='tshirt/', null=True, blank=True)
-    price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+    image = models.ImageField(upload_to='tshirt/%Y/%m/%d/', null=True, blank=True)
+    created_by = models.ForeignKey('Login', on_delete=models.CASCADE)  # Adjust as per your auth model
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.tshirt_name
+
+    class Meta:
+        ordering = ['tshirt_name']
+
+class TshirtColorVariant(models.Model):
+    tshirt = models.ForeignKey(Tshirt, related_name='color_variants', on_delete=models.CASCADE)
+    color_name = models.CharField(max_length=50)
+    image = models.ImageField(upload_to='tshirt_variants/colors/%Y/%m/%d/', null=True, blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.tshirt.tshirt_name} - {self.color_name}"
+
+    def clean(self):
+        if TshirtColorVariant.objects.filter(tshirt=self.tshirt, color_name=self.color_name).exclude(id=self.id).exists():
+            raise ValidationError(f"Color variant '{self.color_name}' already exists for tshirt '{self.tshirt.tshirt_name}'.")
+
+    class Meta:
+        unique_together = ('tshirt', 'color_name')
+
+class TshirtSizeVariant(models.Model):
+    tshirt = models.ForeignKey(Tshirt, related_name='size_variants', on_delete=models.CASCADE)
+    size_name = models.CharField(max_length=50)
+    image = models.ImageField(upload_to='tshirt_variants/sizes/%Y/%m/%d/', null=True, blank=True)
+    inner_width = models.FloatField(null=True, blank=True)
+    inner_height = models.FloatField(null=True, blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.tshirt.tshirt_name} - {self.size_name}"
+
+    def clean(self):
+        if TshirtSizeVariant.objects.filter(tshirt=self.tshirt, size_name=self.size_name).exclude(id=self.id).exists():
+            raise ValidationError(f"Size variant '{self.size_name}' already existsISnipped '{self.tshirt.tshirt_name}'.")
 
 class Tile(models.Model):
     tile_name = models.CharField(max_length=100)
@@ -289,30 +328,111 @@ class Pens(models.Model):
 
 
 class GiftOrder(models.Model):
-    user = models.ForeignKey('Login', on_delete=models.CASCADE, related_name='gift_orders')
-    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE, limit_choices_to={
-        'model__in': ['mug', 'tshirt', 'cap', 'tile', 'pen']
-    })
-    object_id = models.PositiveIntegerField()
-    item = GenericForeignKey('content_type', 'object_id')
-    uploaded_image = models.ImageField(upload_to='order_images/%Y/%m/%d/', blank=True, null=True)
-    preview_image = models.ImageField(upload_to='preview_images/%Y/%m/%d/', blank=True, null=True)
-    size = models.CharField(max_length=10, blank=True, null=True)
-    image_position_x = models.FloatField(default=0)
-    image_position_y = models.FloatField(default=0)
-    image_scale_x = models.FloatField(default=1)
-    image_scale_y = models.FloatField(default=1)
-    image_rotation = models.FloatField(default=0)
+    # Specific foreign keys for each gift type
+    user = models.ForeignKey('Login', on_delete=models.CASCADE)
+    tshirt = models.ForeignKey(
+        'Tshirt',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+    mug = models.ForeignKey(
+        'Mug',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+    cap = models.ForeignKey(
+        'Cap',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+    tile = models.ForeignKey(
+        'Tile',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+    pen = models.ForeignKey(
+        'Pens',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+
+    # T-shirt specific variant fields
+    tshirt_color_variant = models.ForeignKey(
+        'TshirtColorVariant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+    tshirt_size_variant = models.ForeignKey(
+        'TshirtSizeVariant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='orders'
+    )
+
+    # Order details
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    uploaded_image = models.ImageField(upload_to='orders/uploaded/%Y/%m/%d/')
+    preview_image = models.ImageField(upload_to='orders/preview/%Y/%m/%d/')
+    image_position_x = models.FloatField()
+    image_position_y = models.FloatField()
+    image_scale_x = models.FloatField()
+    image_scale_y = models.FloatField()
+    image_rotation = models.FloatField()
+    status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('processing', 'Processing'),
+            ('shipped', 'Shipped'),
+            ('delivered', 'Delivered'),
+            ('cancelled', 'Cancelled'),
+        ],
+        default='pending'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=20, default='pending', choices=[
-        ('pending', 'Pending'),
-        ('paid', 'Paid'),
-    ])
+
+    def clean(self):
+        # Ensure exactly one gift type is selected
+        gift_types = [self.tshirt, self.mug, self.cap, self.tile, self.pen]
+        non_null_gifts = [gt for gt in gift_types if gt is not None]
+        if len(non_null_gifts) != 1:
+            raise ValidationError("Exactly one gift type (Tshirt, Mug, Cap, Tile, or Pen) must be specified.")
+
+        # Validate T-shirt orders have both color and size variants
+        if self.tshirt and (not self.tshirt_color_variant or not self.tshirt_size_variant):
+            raise ValidationError("T-shirt orders must include both a color variant and a size variant.")
+
+        # Validate non-T-shirt orders do not have T-shirt variants
+        if not self.tshirt and (self.tshirt_color_variant or self.tshirt_size_variant):
+            raise ValidationError("Non-T-shirt orders cannot include T-shirt variants.")
+
+        # Ensure T-shirt variants belong to the selected T-shirt
+        if self.tshirt:
+            if self.tshirt_color_variant and self.tshirt_color_variant.tshirt != self.tshirt:
+                raise ValidationError("T-shirt color variant must belong to the selected T-shirt.")
+            if self.tshirt_size_variant and self.tshirt_size_variant.tshirt != self.tshirt:
+                raise ValidationError("T-shirt size variant must belong to the selected T-shirt.")
 
     def __str__(self):
-        return f"Order {self.id} by {self.user.username} - {self.content_type.model} {self.object_id}"
+        gift_type = next((gt for gt in ['tshirt', 'mug', 'cap', 'tile', 'pen'] if getattr(self, gt)), 'unknown')
+        gift = getattr(self, gift_type)
+        return f"Order {self.id} for {gift_type.capitalize()} {getattr(gift, f'{gift_type}_name', 'Unknown')}"
 
+    class Meta:
+        ordering = ['-created_at']
 
 class PrintType(models.Model):
     name = models.CharField(max_length=50, unique=True)
@@ -346,43 +466,87 @@ class LaminationType(models.Model):
         return f"{self.name} - {self.price}"
 
 
-class DocumentPrintOrder(models.Model):
-    DELIVERY_METHODS = (
-        ('Collection', 'Collection'),
-        ('Delivery', 'Delivery'),
-    )
-    user = models.ForeignKey('Login', on_delete=models.CASCADE, related_name='document_print_orders')
+class DocOrder(models.Model):
+    user = models.ForeignKey(Login, on_delete=models.CASCADE)
+    print_type = models.ForeignKey(PrintType, on_delete=models.CASCADE)
+    print_size = models.ForeignKey(PrintSize, on_delete=models.CASCADE)
+    paper_type = models.ForeignKey(PaperType, on_delete=models.CASCADE)
+    lamination = models.BooleanField(default=False)
+    lamination_type = models.ForeignKey(LaminationType, on_delete=models.CASCADE, null=True, blank=True)
+    delivery_option = models.CharField(max_length=20, choices=[('collection', 'Collection'), ('delivery', 'Delivery')])
+    address_city = models.CharField(max_length=100, blank=True)
+    address_pin = models.CharField(max_length=20, blank=True)
+    address_house_name = models.CharField(max_length=200, blank=True)
+    quantity = models.PositiveIntegerField(default=1)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=20, choices=[('pending', 'Pending'), ('paid', 'Paid')], default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Order {self.id} by {self.user.username}"
+
+class OrderFile(models.Model):
+    order = models.ForeignKey('DocOrder', on_delete=models.CASCADE, related_name='files')
+    file = models.FileField(upload_to='order_files/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"File for Order {self.order.id}"
+
+
+class DocumentFile(models.Model):
+    order = models.ForeignKey('DocumentPrintOrder', on_delete=models.CASCADE, related_name='document_files')
     file = models.FileField(upload_to='document_prints/%Y/%m/%d/')
     print_type = models.ForeignKey('PrintType', on_delete=models.SET_NULL, null=True)
     print_size = models.ForeignKey('PrintSize', on_delete=models.SET_NULL, null=True)
     quantity = models.PositiveIntegerField()
     paper_type = models.ForeignKey('PaperType', on_delete=models.SET_NULL, null=True)
-    delivery_method = models.CharField(max_length=20, choices=DELIVERY_METHODS)
-    delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    address = models.TextField(blank=True, null=True)  # New address field
     lamination = models.BooleanField(default=False)
     lamination_type = models.ForeignKey('LaminationType', on_delete=models.SET_NULL, null=True, blank=True)
-    total_price = models.DecimalField(max_digits=10, decimal_places=2)
-    created_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=20, default='pending')
 
-    def calculate_total_price(self):
+    def calculate_file_price(self):
         price = 0
         if self.print_type:
             price += float(self.print_type.price)
         if self.print_size:
             price += float(self.print_size.price)
         if self.paper_type:
-            price += float(self.print_type.price)
-        if self.lamination and self.lamination_type:  # Only adds price if lamination_type exists
+            price += float(self.paper_type.price)
+        if self.lamination and self.lamination_type:
             price += float(self.lamination_type.price)
         price *= self.quantity
+        return round(price, 2)
+
+    def __str__(self):
+        return f"{self.file.name} - {self.print_type.name if self.print_type else 'No Print Type'}"
+
+class DocumentPrintOrder(models.Model):
+    DELIVERY_METHODS = (
+        ('Collection', 'Collection'),
+        ('Delivery', 'Delivery'),
+    )
+    user = models.ForeignKey('Login', on_delete=models.CASCADE, related_name='document_print_orders')
+    delivery_method = models.CharField(max_length=20, choices=DELIVERY_METHODS)
+    delivery_charge = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    address = models.TextField(blank=True, null=True)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)  # Add default
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, default='pending')
+
+    def calculate_total_price(self):
+        price = sum(file.calculate_file_price() for file in self.document_files.all())
         price += float(self.delivery_charge)
         return round(price, 2)
 
     def save(self, *args, **kwargs):
-        self.total_price = self.calculate_total_price()
+        # Set a temporary total_price for initial save if not set
+        if not self.pk and 'total_price' not in kwargs:
+            self.total_price = 0.00
         super().save(*args, **kwargs)
+        # Calculate total_price only if pk exists (after initial save)
+        if self.pk:
+            self.total_price = self.calculate_total_price()
+            super().save(*args, **kwargs)  # Save again to update total_price
 
     def __str__(self):
-        return f"{self.print_type.name if self.print_type else 'Order'} by {self.user.username} - {self.created_at}"
+        return f"Order by {self.user.username} - {self.created_at}"
