@@ -883,7 +883,12 @@ class TshirtListCreateView(generics.ListCreateAPIView):
                 {"error": "Only admins can create T-shirts"},
                 status=status.HTTP_403_FORBIDDEN
             )
-        serializer.save(created_by=self.request.user)
+        try:
+            login_instance = Login.objects.get(user=self.request.user)
+        except Login.DoesNotExist:
+            return Response({"error": "No Login record for this user"}, status=400)
+        serializer.save(created_by=login_instance)
+
 
 class TshirtDetailView(APIView):
     permission_classes = [IsAuthenticated]

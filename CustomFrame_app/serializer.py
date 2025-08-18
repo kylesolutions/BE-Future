@@ -440,10 +440,11 @@ class TshirtSerializer(serializers.ModelSerializer):
     color_variants = TshirtColorVariantSerializer(many=True, read_only=True)
     size_variants = TshirtSizeVariantSerializer(many=True, read_only=True)
     image = serializers.ImageField(required=False, allow_null=True)
+    created_by = serializers.StringRelatedField(read_only=True)
 
     class Meta:
         model = Tshirt
-        fields = ['id', 'tshirt_name', 'image', 'color_variants', 'size_variants']
+        fields = ['id', 'tshirt_name', 'image', 'color_variants', 'size_variants','created_by']
 
     def to_representation(self, instance):
         representation = super().to_representation(instance)
