@@ -884,7 +884,7 @@ class TshirtListCreateView(generics.ListCreateAPIView):
                 status=status.HTTP_403_FORBIDDEN
             )
         try:
-            login_instance = Login.objects.get(user=self.request.user)
+            login_instance = Login.objects.get(username=self.request.user.username)
         except Login.DoesNotExist:
             return Response({"error": "No Login record for this user"}, status=400)
         serializer.save(created_by=login_instance)
