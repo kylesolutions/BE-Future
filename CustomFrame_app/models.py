@@ -266,7 +266,16 @@ class SavedItemMackBoard(models.Model):
 class Mug(models.Model):
     mug_name = models.CharField(max_length=100)
     image = models.ImageField(upload_to='mug/', null=True, blank=True)
+    glb_file = models.FileField(upload_to='mug/glb/', null=True, blank=True)  # New field for GLB file
     price = models.DecimalField(null=True, max_digits=10, decimal_places=2)
+
+    def clean(self):
+        # Ensure at least one of image or glb_file is provided
+        if not self.image and not self.glb_file:
+            raise ValidationError("At least one of image or GLB file must be provided.")
+
+    def __str__(self):
+        return self.mug_name
 
 class Cap(models.Model):
     cap_name = models.CharField(max_length=100)
@@ -550,3 +559,6 @@ class DocumentPrintOrder(models.Model):
 
     def __str__(self):
         return f"Order by {self.user.username} - {self.created_at}"
+
+
+

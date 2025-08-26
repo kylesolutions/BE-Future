@@ -381,14 +381,27 @@ class SavedItemSerializer(serializers.ModelSerializer):
 class MugSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(allow_null=True, required=False)
     image_url = serializers.SerializerMethodField()
+    glb_file = serializers.FileField(allow_null=True, required=False)
+    glb_file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Mug
-        fields = ['id', 'mug_name', 'price', 'image', 'image_url']
+        fields = ['id', 'mug_name', 'price', 'image', 'image_url', 'glb_file', 'glb_file_url']
 
     def get_image_url(self, obj):
         if obj.image:
-            return f"{settings.MEDIA_URL}{obj.image}"
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(f"{settings.MEDIA_URL}{obj.image}")
+            return f"http://localhost:8000{settings.MEDIA_URL}{obj.image}"
+        return None
+
+    def get_glb_file_url(self, obj):
+        if obj.glb_file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(f"{settings.MEDIA_URL}{obj.glb_file}")
+            return f"http://localhost:8000{settings.MEDIA_URL}{obj.glb_file}"
         return None
 
 class CapSerializer(serializers.ModelSerializer):
@@ -740,3 +753,4 @@ class DocumentPrintOrderSerializer(serializers.ModelSerializer):
         except Exception as e:
             logger.error("Error creating order: %s", str(e))
             raise serializers.ValidationError({"detail": f"Failed to save order: {str(e)}"})
+
