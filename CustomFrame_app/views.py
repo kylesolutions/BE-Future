@@ -1426,3 +1426,4 @@ def update_document_print_orders_status(request):
     except Exception as e:
         logger.error(f"Error updating document print orders status: {str(e)}")
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
