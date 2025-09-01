@@ -12,17 +12,19 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     update_gift_orders_status, update_saved_items_status, \
     DocumentPrintOrderView, DocumentPrintOrderDetailView, TshirtDetailView, \
     TshirtBulkVariantCreateView, TshirtColorVariantDetailView, TshirtSizeVariantDetailView, GiftOrderCreateView, \
-    GiftOrderListView, OrderView, OrderDetailView, GiftOrderDetailView
+    GiftOrderListView, OrderView, OrderDetailView, GiftOrderDetailView, MackBoardColorVariantDetailView, MugDetailView, \
+    TileDetailView, CapDetailView, PenDetailView
 
 urlpatterns = [
-    path('api/user_registration/',UserRegistrationView.as_view(), name='user_registration'),
+    path('api/user_registration/', UserRegistrationView.as_view(), name='user_registration'),
     path('api/user_login/', views.user_login, name='user_login'),
     path('login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('api/current-user/', CurrentUserView.as_view(), name='current_user'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    path('mack_boards/', views.MackBoardListCreateView.as_view(), name='mack_board-list-create'),
-    path('mack_boards/<int:pk>/', views.MackBoardDetailView.as_view(), name='mack_board-detail'),
-    path('mack_board_color_variants/', views.MackBoardColorVariantListCreateView.as_view(),name='mack_board_color_variant-list-create'),
+    path('mack_boards/', MackBoardListCreateView.as_view(), name='mack_board-list-create'),
+    path('mack_boards/<int:pk>/', MackBoardDetailView.as_view(), name='mack_board-detail'),
+    path('mack_board_color_variants/', MackBoardColorVariantListCreateView.as_view(), name='mack_board_color_variant-list-create'),
+    path('mack_board_color_variants/<int:variant_id>/', MackBoardColorVariantDetailView.as_view(), name='mack_board_color_variant-detail'),
     path('categories/', FrameCategoriesListCreateView.as_view(), name='categories-list-create'),
     path('categories/<int:pk>/', FrameCategoriesDetailView.as_view(), name='categories-detail'),
     path('frames/', FrameListCreateView.as_view(), name='frame-list-create'),
@@ -41,16 +43,18 @@ urlpatterns = [
     path('save-items/', SavedItemView.as_view(), name='save_items'),
     path('save-items/<int:pk>/', SavedItemView.as_view(), name='save_item_detail'),
     path('mugs/', MugListCreateView.as_view(), name='mug-list-create'),
+    path('mugs/<int:pk>/', MugDetailView.as_view(), name='mug-detail'),
     path('caps/', CapListCreateView.as_view(), name='cap-list-create'),
+    path('caps/<int:pk>/', CapDetailView.as_view(), name='cap-detail'),
     path('tshirts/', TshirtListCreateView.as_view(), name='tshirt-list-create'),
     path('tshirts/<int:tshirt_id>/', TshirtDetailView.as_view(), name='tshirt-detail'),
     path('tshirts/<int:tshirt_id>/variants/', TshirtBulkVariantCreateView.as_view(), name='tshirt-bulk-variant-create'),
-    path('tshirt_color_variants/<int:variant_id>/', TshirtColorVariantDetailView.as_view(),
-         name='tshirt-color-variant-detail'),
-    path('tshirt_size_variants/<int:variant_id>/', TshirtSizeVariantDetailView.as_view(),
-         name='tshirt-size-variant-detail'),
+    path('tshirt_color_variants/<int:variant_id>/', TshirtColorVariantDetailView.as_view(), name='tshirt-color-variant-detail'),
+    path('tshirt_size_variants/<int:variant_id>/', TshirtSizeVariantDetailView.as_view(), name='tshirt-size-variant-detail'),
     path('tiles/', TileListCreateView.as_view(), name='tile-list-create'),
+    path('tiles/<int:pk>/', TileDetailView.as_view(), name='tile-detail'),
     path('pens/', PenListCreateView.as_view(), name='pen-list-create'),
+    path('pens/<int:pk>/', PenDetailView.as_view(), name='pen-detail'),
     path('gift-orders/', GiftOrderCreateView.as_view(), name='gift-order-create'),
     path('gift-orders/list/', GiftOrderListView.as_view(), name='gift-order-list'),
     path('gift-orders/<int:pk>/', GiftOrderDetailView.as_view(), name='gift-order-detail'),
@@ -65,15 +69,12 @@ urlpatterns = [
     path('api/lamination-types/', LaminationTypeView.as_view(), name='lamination_type_list_create'),
     path('api/lamination-types/<int:pk>/', LaminationTypeView.as_view(), name='lamination_type_detail'),
     path('api/document-print-orders/', DocumentPrintOrderView.as_view(), name='document_print_order_create'),
-    path('api/document-print-orders/<int:pk>/', DocumentPrintOrderDetailView.as_view(),
-         name='document_print_order_detail'),
+    path('api/document-print-orders/<int:pk>/', DocumentPrintOrderDetailView.as_view(), name='document_print_order_detail'),
     path('send-order-confirmation/', views.send_order_confirmation, name='send_order_confirmation'),
     path('update-saved-items-status/', views.update_saved_items_status, name='update_saved_items_status'),
     path('update-gift-orders-status/', views.update_gift_orders_status, name='update_gift_orders_status'),
-    path('update-document-print-orders-status/', views.update_document_print_orders_status,
-         name='update_document_print_orders_status'),
-    path('update-simple-document-orders-status/', views.update_simple_document_orders_status,
-         name='update_simple_document_orders_status'),
+    path('update-document-print-orders-status/', views.update_document_print_orders_status, name='update_document_print_orders_status'),
+    path('update-simple-document-orders-status/', views.update_simple_document_orders_status, name='update_simple_document_orders_status'),
 ]
 
 

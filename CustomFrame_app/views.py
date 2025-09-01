@@ -493,6 +493,40 @@ class MackBoardDetailView(generics.RetrieveUpdateDestroyAPIView):
         except ProtectedError:
             raise ValidationError("Cannot delete MackBoard with associated dependencies")
 
+class MackBoardColorVariantDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, variant_id):
+        try:
+            variant = MackBoardColorVariant.objects.get(id=variant_id)
+            serializer = MackBoardColorVariantSerializer(variant, context={'request': request})
+            return Response(serializer.data)
+        except MackBoardColorVariant.DoesNotExist:
+            return Response({"error": "MackBoard color variant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, variant_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update MackBoard color variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            variant = MackBoardColorVariant.objects.get(id=variant_id)
+            serializer = MackBoardColorVariantSerializer(variant, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except MackBoardColorVariant.DoesNotExist:
+            return Response({"error": "MackBoard color variant not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, variant_id):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete MackBoard color variants"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            variant = MackBoardColorVariant.objects.get(id=variant_id)
+            variant.delete()
+            return Response({"message": "MackBoard color variant deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except MackBoardColorVariant.DoesNotExist:
+            return Response({"error": "MackBoard color variant not found"}, status=status.HTTP_404_NOT_FOUND)
+
 
 logger = logging.getLogger(__name__)
 
@@ -828,18 +862,39 @@ class MugDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = MugSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_update(self, serializer):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can update Mugs")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can delete Mugs")
+    def get(self, request, pk):
         try:
-            instance.delete()
+            mug = Mug.objects.get(pk=pk)
+            serializer = MugSerializer(mug, context={'request': request})
+            return Response(serializer.data)
+        except Mug.DoesNotExist:
+            return Response({"error": "Mug not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update Mugs"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            mug = Mug.objects.get(pk=pk)
+            serializer = MugSerializer(mug, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Mug.DoesNotExist:
+            return Response({"error": "Mug not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete Mugs"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            mug = Mug.objects.get(pk=pk)
+            mug.delete()
+            return Response({"message": "Mug deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Mug.DoesNotExist:
+            return Response({"error": "Mug not found"}, status=status.HTTP_404_NOT_FOUND)
         except ProtectedError:
-            raise ValidationError("Cannot delete Mug with associated dependencies")
+            return Response({"error": "Cannot delete Mug with associated dependencies"}, status=status.HTTP_400_BAD_REQUEST)
 
 class CapListCreateView(generics.ListCreateAPIView):
     queryset = Cap.objects.all()
@@ -856,19 +911,39 @@ class CapDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CapSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_update(self, serializer):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can update Caps")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can delete Caps")
+    def get(self, request, pk):
         try:
-            instance.delete()
-        except ProtectedError:
-            raise ValidationError("Cannot delete Cap with associated dependencies")
+            cap = Cap.objects.get(pk=pk)
+            serializer = CapSerializer(cap, context={'request': request})
+            return Response(serializer.data)
+        except Cap.DoesNotExist:
+            return Response({"error": "Cap not found"}, status=status.HTTP_404_NOT_FOUND)
 
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update Caps"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            cap = Cap.objects.get(pk=pk)
+            serializer = CapSerializer(cap, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Cap.DoesNotExist:
+            return Response({"error": "Cap not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete Caps"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            cap = Cap.objects.get(pk=pk)
+            cap.delete()
+            return Response({"message": "Cap deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Cap.DoesNotExist:
+            return Response({"error": "Cap not found"}, status=status.HTTP_404_NOT_FOUND)
+        except ProtectedError:
+            return Response({"error": "Cannot delete Cap with associated dependencies"}, status=status.HTTP_400_BAD_REQUEST)
 
 logger = logging.getLogger(__name__)
 
@@ -1046,18 +1121,39 @@ class TileDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TileSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_update(self, serializer):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can update Tiles")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can delete Tiles")
+    def get(self, request, pk):
         try:
-            instance.delete()
+            tile = Tile.objects.get(pk=pk)
+            serializer = TileSerializer(tile, context={'request': request})
+            return Response(serializer.data)
+        except Tile.DoesNotExist:
+            return Response({"error": "Tile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update Tiles"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            tile = Tile.objects.get(pk=pk)
+            serializer = TileSerializer(tile, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Tile.DoesNotExist:
+            return Response({"error": "Tile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete Tiles"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            tile = Tile.objects.get(pk=pk)
+            tile.delete()
+            return Response({"message": "Tile deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Tile.DoesNotExist:
+            return Response({"error": "Tile not found"}, status=status.HTTP_404_NOT_FOUND)
         except ProtectedError:
-            raise ValidationError("Cannot delete Tile with associated dependencies")
+            return Response({"error": "Cannot delete Tile with associated dependencies"}, status=status.HTTP_400_BAD_REQUEST)
 
 class PenListCreateView(generics.ListCreateAPIView):
     queryset = Pens.objects.all()
@@ -1074,18 +1170,39 @@ class PenDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PenSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_update(self, serializer):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can update Pens")
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if not self.request.user.is_staff:
-            raise PermissionDenied("Only admins can delete Pens")
+    def get(self, request, pk):
         try:
-            instance.delete()
+            pen = Pens.objects.get(pk=pk)
+            serializer = PenSerializer(pen, context={'request': request})
+            return Response(serializer.data)
+        except Pens.DoesNotExist:
+            return Response({"error": "Pen not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def put(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can update Pens"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            pen = Pens.objects.get(pk=pk)
+            serializer = PenSerializer(pen, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data)
+            logger.error(f"Serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Pens.DoesNotExist:
+            return Response({"error": "Pen not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    def delete(self, request, pk):
+        if not request.user.is_staff:
+            return Response({"error": "Only admins can delete Pens"}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            pen = Pens.objects.get(pk=pk)
+            pen.delete()
+            return Response({"message": "Pen deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
+        except Pens.DoesNotExist:
+            return Response({"error": "Pen not found"}, status=status.HTTP_404_NOT_FOUND)
         except ProtectedError:
-            raise ValidationError("Cannot delete Pen with associated dependencies")
+            return Response({"error": "Cannot delete Pen with associated dependencies"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 logger = logging.getLogger(__name__)
@@ -1341,10 +1458,17 @@ class OrderDetailView(APIView):
 class DocumentPrintOrderView(APIView):
     permission_classes = [IsAuthenticated]
 
+    def get(self, request):
+        if request.user.is_staff:
+            orders = DocumentPrintOrder.objects.all().order_by('-created_at')
+        else:
+            orders = DocumentPrintOrder.objects.filter(user=request.user).order_by('-created_at')
+        serializer = DocumentPrintOrderSerializer(orders, many=True, context={'request': request})
+        return Response(serializer.data)
+
     def post(self, request):
         logger.debug("Raw request data: %s", dict(request.data))
         logger.debug("Raw request files: %s", dict(request.FILES))
-
         # Prepare data for serializer
         data = {
             'delivery_method': request.data.get('delivery_method'),
@@ -1352,7 +1476,6 @@ class DocumentPrintOrderView(APIView):
             'address': request.data.get('address', ''),
             'document_files': []
         }
-
         # Parse document_files
         index = 0
         while f'document_files[{index}][file]' in request.FILES:
@@ -1367,13 +1490,10 @@ class DocumentPrintOrderView(APIView):
             }
             data['document_files'].append(file_data)
             index += 1
-
         if not data['document_files']:
             logger.error("No document files provided in request")
             return Response({"detail": "At least one document file is required."}, status=status.HTTP_400_BAD_REQUEST)
-
         logger.debug("Processed data for serializer: %s", data)
-
         serializer = DocumentPrintOrderSerializer(data=data, context={'request': request})
         if serializer.is_valid():
             try:
