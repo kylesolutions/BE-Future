@@ -13,7 +13,9 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     DocumentPrintOrderView, DocumentPrintOrderDetailView, TshirtDetailView, \
     TshirtBulkVariantCreateView, TshirtColorVariantDetailView, TshirtSizeVariantDetailView, GiftOrderCreateView, \
     GiftOrderListView, OrderView, OrderDetailView, GiftOrderDetailView, MackBoardColorVariantDetailView, MugDetailView, \
-    TileDetailView, CapDetailView, PenDetailView
+    TileDetailView, CapDetailView, PenDetailView, ThemeListCreateView, ThemeDetailView, BackgroundListCreateView, \
+    BackgroundDetailView, StickerListCreateView, StickerDetailView, PhotoBookPapersListCreateView, \
+    PhotoBookPapersDetailView
 
 urlpatterns = [
     path('api/user_registration/', UserRegistrationView.as_view(), name='user_registration'),
@@ -75,6 +77,14 @@ urlpatterns = [
     path('update-gift-orders-status/', views.update_gift_orders_status, name='update_gift_orders_status'),
     path('update-document-print-orders-status/', views.update_document_print_orders_status, name='update_document_print_orders_status'),
     path('update-simple-document-orders-status/', views.update_simple_document_orders_status, name='update_simple_document_orders_status'),
+    path('themes/', ThemeListCreateView.as_view(), name='theme-list-create'),
+    path('themes/<int:pk>/', ThemeDetailView.as_view(), name='theme-detail'),
+    path('backgrounds/', BackgroundListCreateView.as_view(), name='background-list-create'),
+    path('backgrounds/<int:pk>/', BackgroundDetailView.as_view(), name='background-detail'),
+    path('stickers/', StickerListCreateView.as_view(), name='sticker-list-create'),
+    path('stickers/<int:pk>/', StickerDetailView.as_view(), name='sticker-detail'),
+    path('photobook-papers/', PhotoBookPapersListCreateView.as_view(), name='photobook-papers-list-create'),
+    path('photobook-papers/<int:pk>/', PhotoBookPapersDetailView.as_view(), name='photobook-papers-detail'),
 ]
 
 

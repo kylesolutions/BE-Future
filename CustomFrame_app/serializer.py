@@ -10,7 +10,8 @@ import logging
 from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVariant, Frame, FrameHangVariant, \
     CartItem, FrameCategories, MackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, \
     MackBoardColorVariant, SavedItemMackBoard, PrintType, PrintSize, PaperType, LaminationType, DocumentPrintOrder, \
-    DocumentFile, TshirtColorVariant, TshirtSizeVariant, GiftOrder, DocOrder, OrderFile
+    DocumentFile, TshirtColorVariant, TshirtSizeVariant, GiftOrder, DocOrder, OrderFile, Background, Sticker, Theme, \
+    PhotoBookPapers
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -754,3 +755,29 @@ class DocumentPrintOrderSerializer(serializers.ModelSerializer):
             logger.error("Error creating order: %s", str(e))
             raise serializers.ValidationError({"detail": f"Failed to save order: {str(e)}"})
 
+class BackgroundSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Background
+        fields = ['id', 'theme', 'name', 'image', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+class StickerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Sticker
+        fields = ['id', 'theme', 'name', 'image', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+class ThemeSerializer(serializers.ModelSerializer):
+    backgrounds = BackgroundSerializer(many=True, read_only=True)
+    stickers = StickerSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Theme
+        fields = ['id', 'theme_name', 'backgrounds', 'stickers', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+class PhotoBookPapersSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PhotoBookPapers
+        fields = ['id', 'size', 'image', 'price', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']

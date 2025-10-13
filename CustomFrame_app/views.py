@@ -22,7 +22,7 @@ from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
     CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, MackBoardColorVariant, \
     LaminationType, PaperType, PrintSize, PrintType, DocumentPrintOrder, TshirtSizeVariant, TshirtColorVariant, \
-    GiftOrder, DocOrder, Order
+    GiftOrder, DocOrder, Order, Background, Theme, Sticker, PhotoBookPapers
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
@@ -30,7 +30,8 @@ from CustomFrame_app.serializer import (
     MugSerializer, CapSerializer, TileSerializer, PenSerializer,
     MackBoardColorVariantSerializer, DocumentPrintOrderSerializer, LaminationTypeSerializer, PaperTypeSerializer,
     PrintSizeSerializer, PrintTypeSerializer, TshirtSizeVariantSerializer, TshirtColorVariantSerializer,
-    TshirtSerializer, GiftOrderSerializer, OrderSerializer,
+    TshirtSerializer, GiftOrderSerializer, OrderSerializer, BackgroundSerializer, ThemeSerializer, StickerSerializer,
+    PhotoBookPapersSerializer,
 )
 import json
 
@@ -1547,3 +1548,48 @@ def update_document_print_orders_status(request):
         logger.error(f"Error updating document print orders status: {str(e)}")
         return JsonResponse({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+class ThemeListCreateView(generics.ListCreateAPIView):
+    queryset = Theme.objects.all()
+    serializer_class = ThemeSerializer
+    permission_classes = [IsAuthenticated]
+
+class ThemeDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Theme.objects.all()
+    serializer_class = ThemeSerializer
+    permission_classes = [IsAuthenticated]
+
+class BackgroundListCreateView(generics.ListCreateAPIView):
+    queryset = Background.objects.all()
+    serializer_class = BackgroundSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+class BackgroundDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Background.objects.all()
+    serializer_class = BackgroundSerializer
+    permission_classes = [IsAuthenticated]
+
+class StickerListCreateView(generics.ListCreateAPIView):
+    queryset = Sticker.objects.all()
+    serializer_class = StickerSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save()
+
+class StickerDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Sticker.objects.all()
+    serializer_class = StickerSerializer
+    permission_classes = [IsAuthenticated]
+
+class PhotoBookPapersListCreateView(generics.ListCreateAPIView):
+    queryset = PhotoBookPapers.objects.all()
+    serializer_class = PhotoBookPapersSerializer
+    permission_classes = [IsAuthenticated]
+
+class PhotoBookPapersDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = PhotoBookPapers.objects.all()
+    serializer_class = PhotoBookPapersSerializer
+    permission_classes = [IsAuthenticated]

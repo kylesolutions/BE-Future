@@ -561,4 +561,40 @@ class DocumentPrintOrder(models.Model):
         return f"Order by {self.user.username} - {self.created_at}"
 
 
+class Theme(models.Model):
+    theme_name = models.CharField(max_length=20, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return self.theme_name
+
+class Background(models.Model):
+    theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='backgrounds')
+    name = models.CharField(max_length=50)
+    image = models.ImageField(upload_to='backgrounds/')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.theme.theme_name})"
+
+class Sticker(models.Model):
+    theme = models.ForeignKey(Theme, on_delete=models.CASCADE, related_name='stickers')
+    name = models.CharField(max_length=50)
+    image = models.ImageField(upload_to='stickers/')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.theme.theme_name})"
+
+class PhotoBookPapers(models.Model):
+    size = models.CharField(max_length=50)  # e.g., 'A4', '8x10', etc.
+    image = models.ImageField(upload_to='photobook_papers/')
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.size} - ${self.price}"
