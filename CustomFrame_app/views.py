@@ -22,7 +22,7 @@ from CustomFrame_app.forms import UserRegister
 from CustomFrame_app.models import Frame, Login, ColorVariant, SizeVariant, FinishingVariant, FrameHangVariant, Cart, \
     CartItem, FrameCategories, SavedItem, MackBoard, Mug, Cap, Tshirt, Tile, Pens, MackBoardColorVariant, \
     LaminationType, PaperType, PrintSize, PrintType, DocumentPrintOrder, TshirtSizeVariant, TshirtColorVariant, \
-    GiftOrder, DocOrder, Order, Background, Theme, Sticker, PhotoBookPapers
+    GiftOrder, DocOrder, Order, Background, Theme, Sticker, PhotoBookPapers, PhotoBookOrder
 from CustomFrame_app.serializer import (
     FrameSerializer, ColorVariantSerializer, SizeVariantSerializer,
     FinishingVariantSerializer, HangingsVariantSerializer, UserDetails_Serializer, CartItemCreateSerializer,
@@ -31,7 +31,7 @@ from CustomFrame_app.serializer import (
     MackBoardColorVariantSerializer, DocumentPrintOrderSerializer, LaminationTypeSerializer, PaperTypeSerializer,
     PrintSizeSerializer, PrintTypeSerializer, TshirtSizeVariantSerializer, TshirtColorVariantSerializer,
     TshirtSerializer, GiftOrderSerializer, OrderSerializer, BackgroundSerializer, ThemeSerializer, StickerSerializer,
-    PhotoBookPapersSerializer,
+    PhotoBookPapersSerializer, PhotoBookOrderSerializer, UploadedImageSerializer,
 )
 import json
 
@@ -1593,3 +1593,31 @@ class PhotoBookPapersDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = PhotoBookPapers.objects.all()
     serializer_class = PhotoBookPapersSerializer
     permission_classes = [IsAuthenticated]
+
+class PhotoBookOrderListView(generics.ListAPIView):
+    serializer_class = PhotoBookOrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return PhotoBookOrder.objects.filter(user=self.request.user)
+
+class PhotoBookOrderCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = PhotoBookOrderSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ImageUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = UploadedImageSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+

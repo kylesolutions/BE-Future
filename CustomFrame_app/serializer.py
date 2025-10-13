@@ -11,7 +11,7 @@ from CustomFrame_app.models import Login, ColorVariant, SizeVariant, FinishingVa
     CartItem, FrameCategories, MackBoard, SavedItem, Mug, Cap, Tshirt, Tile, Pens, \
     MackBoardColorVariant, SavedItemMackBoard, PrintType, PrintSize, PaperType, LaminationType, DocumentPrintOrder, \
     DocumentFile, TshirtColorVariant, TshirtSizeVariant, GiftOrder, DocOrder, OrderFile, Background, Sticker, Theme, \
-    PhotoBookPapers
+    PhotoBookPapers, Page, PageElement, PhotoBookOrder, UploadedImage
 
 
 class UserDetails_Serializer(serializers.ModelSerializer):
@@ -781,3 +781,56 @@ class PhotoBookPapersSerializer(serializers.ModelSerializer):
         model = PhotoBookPapers
         fields = ['id', 'size', 'image', 'price', 'created_at', 'updated_at']
         read_only_fields = ['created_at', 'updated_at']
+
+class UploadedImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UploadedImage
+        fields = ['id', 'image']
+
+class PageElementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PageElement
+        fields = ['type', 'content', 'x', 'y', 'width', 'height', 'rotation', 'z_index']
+
+class PageSerializer(serializers.ModelSerializer):
+    elements = PageElementSerializer(many=True)
+    background = BackgroundSerializer(read_only=True)
+    background_id = serializers.PrimaryKeyRelatedField(
+        queryset=Background.objects.all(), source='background', required=False, allow_null=True, write_only=True
+    )
+
+    class Meta:
+        model = Page
+        fields = ['page_number', 'background', 'background_id', 'elements']
+
+    def create(self, validated_data):
+        elements_data = validated_data.pop('elements')
+        page = Page.objects.create(**validated_data)
+        for element_data in elements_data:
+            PageElement.objects.create(page=page, **element_data)
+        return page
+
+class PhotoBookOrderSerializer(serializers.ModelSerializer):
+    pages = PageSerializer(many=True)
+    theme = ThemeSerializer(read_only=True)
+    theme_id = serializers.PrimaryKeyRelatedField(queryset=Theme.objects.all(), source='theme', write_only=True)
+    paper = PhotoBookPapersSerializer(read_only=True)
+    paper_id = serializers.PrimaryKeyRelatedField(queryset=PhotoBookPapers.objects.all(), source='paper', write_only=True)
+    user = serializers.SlugRelatedField(slug_field='username', read_only=True)
+    total_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        model = PhotoBookOrder
+        fields = ['id', 'user', 'theme', 'theme_id', 'paper', 'paper_id', 'total_price', 'pages', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        pages_data = validated_data.pop('pages')
+        validated_data['user'] = self.context['request'].user
+        order = PhotoBookOrder.objects.create(**validated_data)
+        for page_data in pages_data:
+            elements_data = page_data.pop('elements')
+            page = Page.objects.create(order=order, **page_data)
+            for element_data in elements_data:
+                PageElement.objects.create(page=page, **element_data)
+        return order

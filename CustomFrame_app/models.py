@@ -598,3 +598,51 @@ class PhotoBookPapers(models.Model):
 
     def __str__(self):
         return f"{self.size} - ${self.price}"
+
+class UploadedImage(models.Model):
+    user = models.ForeignKey(Login, on_delete=models.CASCADE)
+    image = models.ImageField(upload_to='uploads/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Image by {self.user.username}"
+
+class PhotoBookOrder(models.Model):
+    user = models.ForeignKey(Login, on_delete=models.CASCADE)
+    theme = models.ForeignKey(Theme, on_delete=models.CASCADE)
+    paper = models.ForeignKey(PhotoBookPapers, on_delete=models.CASCADE)
+    total_price = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Order {self.id} by {self.user.username}"
+
+class Page(models.Model):
+    order = models.ForeignKey(PhotoBookOrder, on_delete=models.CASCADE, related_name='pages')
+    page_number = models.IntegerField()
+    background = models.ForeignKey(Background, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('order', 'page_number')
+
+    def __str__(self):
+        return f"Page {self.page_number} of Order {self.order.id}"
+
+class PageElement(models.Model):
+    page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name='elements')
+    type = models.CharField(max_length=20, choices=[('image', 'Image'), ('sticker', 'Sticker'), ('text', 'Text'), ('placeholder', 'Placeholder')])
+    content = models.TextField(blank=True)
+    x = models.FloatField()
+    y = models.FloatField()
+    width = models.FloatField()
+    height = models.FloatField()
+    rotation = models.FloatField(default=0)
+    z_index = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.type} on Page {self.page.page_number}"
