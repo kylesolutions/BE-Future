@@ -790,46 +790,35 @@ class UploadedImageSerializer(serializers.ModelSerializer):
 class PageElementSerializer(serializers.ModelSerializer):
     class Meta:
         model = PageElement
-        fields = ['type', 'content', 'x', 'y', 'width', 'height', 'rotation', 'z_index']
+        fields = ['id', 'type', 'content', 'x', 'y', 'width', 'height', 'rotation', 'z_index']
 
 class PageSerializer(serializers.ModelSerializer):
     elements = PageElementSerializer(many=True)
-    background = BackgroundSerializer(read_only=True)
-    background_id = serializers.PrimaryKeyRelatedField(
-        queryset=Background.objects.all(), source='background', required=False, allow_null=True, write_only=True
-    )
+    preview_image = serializers.ImageField(required=False)
 
     class Meta:
         model = Page
-        fields = ['page_number', 'background', 'background_id', 'elements']
+        fields = ['id', 'page_number', 'background', 'preview_image', 'elements']
 
     def create(self, validated_data):
-        elements_data = validated_data.pop('elements')
+        elements_data = validated_data.pop('elements', [])
         page = Page.objects.create(**validated_data)
         for element_data in elements_data:
             PageElement.objects.create(page=page, **element_data)
         return page
 
 class PhotoBookOrderSerializer(serializers.ModelSerializer):
-    pages = PageSerializer(many=True)
-    theme = ThemeSerializer(read_only=True)
-    theme_id = serializers.PrimaryKeyRelatedField(queryset=Theme.objects.all(), source='theme', write_only=True)
-    paper = PhotoBookPapersSerializer(read_only=True)
-    paper_id = serializers.PrimaryKeyRelatedField(queryset=PhotoBookPapers.objects.all(), source='paper', write_only=True)
-    user = serializers.SlugRelatedField(slug_field='username', read_only=True)
-    total_price = serializers.DecimalField(max_digits=10, decimal_places=2)
+    pages = PageSerializer(many=True, required=False)
 
     class Meta:
         model = PhotoBookOrder
-        fields = ['id', 'user', 'theme', 'theme_id', 'paper', 'paper_id', 'total_price', 'pages', 'created_at', 'updated_at']
-        read_only_fields = ['id', 'user', 'created_at', 'updated_at']
+        fields = ['id', 'user', 'theme', 'paper', 'total_price', 'created_at', 'updated_at', 'pages']
 
     def create(self, validated_data):
-        pages_data = validated_data.pop('pages')
-        validated_data['user'] = self.context['request'].user
+        pages_data = validated_data.pop('pages', [])
         order = PhotoBookOrder.objects.create(**validated_data)
         for page_data in pages_data:
-            elements_data = page_data.pop('elements')
+            elements_data = page_data.pop('elements', [])
             page = Page.objects.create(order=order, **page_data)
             for element_data in elements_data:
                 PageElement.objects.create(page=page, **element_data)

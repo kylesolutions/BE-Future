@@ -622,6 +622,7 @@ class Page(models.Model):
     order = models.ForeignKey(PhotoBookOrder, on_delete=models.CASCADE, related_name='pages')
     page_number = models.IntegerField()
     background = models.ForeignKey(Background, on_delete=models.SET_NULL, null=True, blank=True)
+    preview_image = models.ImageField(upload_to='photobook_previews/%Y/%m/%d/', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
