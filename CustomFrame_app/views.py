@@ -1746,6 +1746,50 @@ class PhotoBookOrderCreateView(views.APIView):
             logger.error(f"Unexpected error in PhotoBookOrderCreateView: {str(e)}", exc_info=True)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+class PhotoBookOrderDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, order_id, *args, **kwargs):
+        try:
+            # Fetch the order, ensuring it belongs to the authenticated user
+            order = PhotoBookOrder.objects.filter(id=order_id, user=request.user).first()
+            if not order:
+                logger.error(f"Order {order_id} not found or user {request.user.id} lacks permission")
+                return Response(
+                    {'error': 'Order not found or you do not have permission to delete it'},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Log the deletion attempt
+            logger.info(f"Deleting order {order_id} for user {request.user.id}")
+
+            # Delete associated preview images manually (if they exist)
+            for page in order.pages.all():
+                if page.preview_image and page.preview_image.name:  # Check if file exists
+                    try:
+                        page.preview_image.delete(save=False)  # Delete file from storage
+                        logger.info(f"Deleted preview image for page {page.id}: {page.preview_image.name}")
+                    except Exception as e:
+                        logger.error(f"Failed to delete preview image for page {page.id}: {str(e)}", exc_info=True)
+                else:
+                    logger.info(f"No preview image to delete for page {page.id}")
+
+            # Delete the order (cascades to pages and elements due to Django's CASCADE)
+            order.delete()
+            logger.info(f"Successfully deleted order {order_id}")
+
+            return Response(
+                {'message': f'Order {order_id} deleted successfully'},
+                status=status.HTTP_204_NO_CONTENT
+            )
+
+        except Exception as e:
+            logger.error(f"Unexpected error deleting order {order_id}: {str(e)}", exc_info=True)
+            return Response(
+                {'error': f'Failed to delete order: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 
 class ImageUploadView(APIView):
     permission_classes = [IsAuthenticated]

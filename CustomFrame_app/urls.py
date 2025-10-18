@@ -15,7 +15,8 @@ from CustomFrame_app.views import UserDetailView, UserListView, \
     GiftOrderListView, OrderView, OrderDetailView, GiftOrderDetailView, MackBoardColorVariantDetailView, MugDetailView, \
     TileDetailView, CapDetailView, PenDetailView, ThemeListCreateView, ThemeDetailView, BackgroundListCreateView, \
     BackgroundDetailView, StickerListCreateView, StickerDetailView, PhotoBookPapersListCreateView, \
-    PhotoBookPapersDetailView, PhotoBookOrderCreateView, ImageUploadView, PhotoBookOrderListView
+    PhotoBookPapersDetailView, PhotoBookOrderCreateView, ImageUploadView, PhotoBookOrderListView, \
+    PhotoBookOrderDeleteView
 
 urlpatterns = [
     path('api/user_registration/', UserRegistrationView.as_view(), name='user_registration'),
@@ -87,6 +88,7 @@ urlpatterns = [
     path('photobook-papers/<int:pk>/', PhotoBookPapersDetailView.as_view(), name='photobook-papers-detail'),
     path('orders/', PhotoBookOrderListView.as_view(), name='order-list'),
     path('orders/create/', PhotoBookOrderCreateView.as_view(), name='order-create'),
+    path('orders/<int:order_id>/', PhotoBookOrderDeleteView.as_view(), name='order-delete'),
     path('upload-images/', ImageUploadView.as_view(), name='image-upload'),
 ]
 
