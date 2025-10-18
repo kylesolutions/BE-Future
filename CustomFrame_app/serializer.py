@@ -794,32 +794,47 @@ class PageElementSerializer(serializers.ModelSerializer):
 
 class PageSerializer(serializers.ModelSerializer):
     elements = PageElementSerializer(many=True)
-    preview_image = serializers.ImageField(required=False)
+    preview_image = serializers.SerializerMethodField()
+    background = serializers.SerializerMethodField()
+    client_page_id = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = Page
-        fields = ['id', 'page_number', 'background', 'preview_image', 'elements']
+        fields = ['id', 'page_number', 'background', 'preview_image', 'elements', 'client_page_id']
 
-    def create(self, validated_data):
-        elements_data = validated_data.pop('elements', [])
-        page = Page.objects.create(**validated_data)
-        for element_data in elements_data:
-            PageElement.objects.create(page=page, **element_data)
-        return page
+    def get_preview_image(self, obj):
+        request = self.context.get('request')
+        if obj.preview_image and hasattr(obj.preview_image, 'url') and request:
+            logger.info(f"Serializing preview_image for page {obj.id}: {obj.preview_image.url}")
+            return request.build_absolute_uri(obj.preview_image.url)
+        logger.warning(f"No preview_image for page {obj.id}")
+        return None
+
+    def get_background(self, obj):
+        if obj.background:
+            request = self.context.get('request')
+            return {
+                'id': obj.background.id,
+                'name': obj.background.name,
+                'image': request.build_absolute_uri(obj.background.image.url) if request and obj.background.image else None
+            }
+        return None
 
 class PhotoBookOrderSerializer(serializers.ModelSerializer):
     pages = PageSerializer(many=True, required=False)
+    theme = ThemeSerializer(read_only=True)
+    paper = PhotoBookPapersSerializer(read_only=True)
+    page_previews = serializers.DictField(child=serializers.FileField(), write_only=True, required=False)
 
     class Meta:
         model = PhotoBookOrder
-        fields = ['id', 'user', 'theme', 'paper', 'total_price', 'created_at', 'updated_at', 'pages']
+        fields = ['id', 'user', 'theme', 'paper', 'total_price', 'created_at', 'updated_at', 'pages', 'page_previews']
 
-    def create(self, validated_data):
-        pages_data = validated_data.pop('pages', [])
-        order = PhotoBookOrder.objects.create(**validated_data)
-        for page_data in pages_data:
-            elements_data = page_data.pop('elements', [])
-            page = Page.objects.create(order=order, **page_data)
-            for element_data in elements_data:
-                PageElement.objects.create(page=page, **element_data)
-        return order
+    def validate(self, data):
+        pages = data.get('pages', [])
+        page_previews = data.get('page_previews', {})
+        client_page_ids = {page['client_page_id'] for page in pages if 'client_page_id' in page}
+        for page_id in page_previews.keys():
+            if page_id not in client_page_ids:
+                raise serializers.ValidationError(f"Invalid client_page_id in page_previews: {page_id}")
+        return data

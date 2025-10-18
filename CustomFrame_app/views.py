@@ -1,7 +1,10 @@
+import hashlib
 import logging
 import os
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
+from django.core.files.base import ContentFile
+from django.core.files.images import ImageFile
 from django.core.files.storage import default_storage, FileSystemStorage
 from django.core.mail import send_mail
 from django.db.models import ProtectedError
@@ -1599,7 +1602,10 @@ class PhotoBookOrderListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return PhotoBookOrder.objects.filter(user=self.request.user)
+        return PhotoBookOrder.objects.filter(user=self.request.user).prefetch_related('pages__elements')
+
+    def get_serializer_context(self):
+        return {'request': self.request}
 
 
 logger = logging.getLogger(__name__)
@@ -1607,13 +1613,23 @@ logger = logging.getLogger(__name__)
 class PhotoBookOrderCreateView(views.APIView):
     def post(self, request, *args, **kwargs):
         try:
-            # Extract data
+            if not request.user.is_authenticated:
+                logger.error("User is not authenticated")
+                return Response({'error': 'Authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+
+            # Log all incoming request data
+            logger.info(f"Received request.data: {dict(request.data)}")
+            logger.info(f"Received request.FILES: {list(request.FILES.keys())}")
+
             theme_id = request.data.get('theme_id')
             paper_id = request.data.get('paper_id')
             total_price = request.data.get('total_price')
-            logger.info(f"Received order data: theme_id={theme_id}, paper_id={paper_id}, total_price={total_price}")
+            logger.info(f"Order data: theme_id={theme_id}, paper_id={paper_id}, total_price={total_price}")
 
-            # Parse pages data from FormData
+            if not all([theme_id, paper_id, total_price]):
+                logger.error("Missing required fields")
+                return Response({'error': 'Missing required fields: theme_id, paper_id, or total_price'}, status=status.HTTP_400_BAD_REQUEST)
+
             pages_data = []
             for key in request.data.keys():
                 if key.startswith('pages['):
@@ -1625,11 +1641,13 @@ class PhotoBookOrderCreateView(views.APIView):
                         logger.error(f"Invalid JSON for page data: {key}, error: {str(e)}")
                         return Response({'error': f'Invalid JSON for page data: {key}'}, status=status.HTTP_400_BAD_REQUEST)
 
-            # Sort pages by page_number to maintain order
+            if not pages_data:
+                logger.error("No valid pages data provided")
+                return Response({'error': 'No valid pages data provided'}, status=status.HTTP_400_BAD_REQUEST)
+
             pages_data.sort(key=lambda x: x.get('page_number', 0))
             logger.info(f"Sorted pages_data: {pages_data}")
 
-            # Create order
             order = PhotoBookOrder.objects.create(
                 user=request.user,
                 theme_id=theme_id,
@@ -1638,30 +1656,25 @@ class PhotoBookOrderCreateView(views.APIView):
             )
             logger.info(f"Created order with ID {order.id}")
 
-            # Create a mapping of client-side page IDs to database page objects
             page_id_mapping = {}
-
-            # Handle pages and previews
             for page_data in pages_data:
                 page_number = page_data.get('page_number')
                 background_id = page_data.get('background_id')
                 elements_data = page_data.get('elements', [])
-                client_page_id = str(page_data.get('client_page_id'))  # Convert to string to avoid type mismatch
+                client_page_id = str(page_data.get('client_page_id'))  # Ensure string
 
-                # Create page
+                if not page_number or not client_page_id:
+                    logger.error(f"Missing page_number or client_page_id in page_data: {page_data}")
+                    return Response({'error': 'Missing page_number or client_page_id'}, status=status.HTTP_400_BAD_REQUEST)
+
                 page = Page.objects.create(
                     order=order,
                     page_number=page_number,
                     background_id=background_id if background_id else None
                 )
                 logger.info(f"Created page with ID {page.id}, page_number={page_number}, client_page_id={client_page_id}")
+                page_id_mapping[client_page_id] = page
 
-                # Store mapping of client-side page ID to database page object
-                if client_page_id:
-                    page_id_mapping[client_page_id] = page
-                    logger.info(f"Mapped client_page_id {client_page_id} to page ID {page.id}")
-
-                # Create page elements
                 for element_data in elements_data:
                     PageElement.objects.create(
                         page=page,
@@ -1676,39 +1689,61 @@ class PhotoBookOrderCreateView(views.APIView):
                     )
                     logger.info(f"Created page element for page ID {page.id}: {element_data}")
 
-            # Log all files received
-            logger.info(f"Received files: {list(request.FILES.keys())}")
+            logger.info(f"Page ID mapping: {page_id_mapping}")
 
-            # Handle preview images using client_page_id
+            preview_hashes = set()
             for key in request.FILES.keys():
                 if key.startswith('page_previews['):
                     try:
-                        # Extract client_page_id from key, e.g., page_previews[1] -> 1
                         client_page_id = key.split('[')[1].split(']')[0]
-                        logger.info(f"Processing preview for client_page_id {client_page_id}")
+                        preview_file = request.FILES[key]
+                        logger.info(f"Processing preview for client_page_id {client_page_id}, file: {preview_file.name}, size: {preview_file.size}, content_type: {preview_file.content_type}")
+
+                        # Skip content type validation for debugging
+                        # if preview_file.content_type not in ['image/png', 'image/jpeg']:
+                        #     logger.warning(f"Invalid content type for client_page_id {client_page_id}: {preview_file.content_type}")
+                        #     continue
+
+                        # Calculate file hash
+                        file_content = preview_file.read()
+                        file_hash = hashlib.md5(file_content).hexdigest()
+                        preview_file.seek(0)
+                        if file_hash in preview_hashes:
+                            logger.warning(f"Duplicate preview file detected for client_page_id {client_page_id}, hash: {file_hash}")
+                        else:
+                            preview_hashes.add(file_hash)
+                            logger.info(f"Unique preview file for client_page_id {client_page_id}, hash: {file_hash}")
+
                         if client_page_id in page_id_mapping:
                             page = page_id_mapping[client_page_id]
-                            preview_file = request.FILES[key]
-                            logger.info(f"Saving preview for page ID {page.id}, client_page_id {client_page_id}, file: {preview_file.name}, size: {preview_file.size}")
-                            if preview_file.size > 0:  # Verify file is not empty
-                                page.preview_image.save(f'page_{page.id}_preview.jpg', preview_file, save=True)
-                                logger.info(f"Successfully saved preview for page ID {page.id}")
+                            if preview_file.size > 0:
+                                try:
+                                    page.preview_image.save(
+                                        f'page_{page.id}_preview_{client_page_id}.png',
+                                        preview_file,
+                                        save=True
+                                    )
+                                    logger.info(f"Saved preview for page ID {page.id}, client_page_id {client_page_id}, url: {page.preview_image.url}")
+                                except Exception as e:
+                                    logger.error(f"Failed to save preview for client_page_id {client_page_id}: {str(e)}", exc_info=True)
                             else:
                                 logger.warning(f"Empty preview file for client_page_id {client_page_id}")
                         else:
-                            logger.warning(f"No page found for client_page_id {client_page_id}")
+                            logger.warning(f"No page found for client_page_id {client_page_id} in page_id_mapping: {page_id_mapping.keys()}")
                     except Exception as e:
-                        logger.error(f"Error processing preview {key}: {str(e)}")
-                        continue  # Continue processing other previews
+                        logger.error(f"Error processing preview {key}: {str(e)}", exc_info=True)
+                        continue
 
-            # Fetch the order with related pages and elements
+            if not preview_hashes:
+                logger.warning("No valid preview images received")
+
             order = PhotoBookOrder.objects.prefetch_related('pages__elements').get(id=order.id)
-            serializer = PhotoBookOrderSerializer(order)
+            serializer = PhotoBookOrderSerializer(order, context={'request': request})
             logger.info(f"Returning serialized order: {serializer.data}")
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Unexpected error in PhotoBookOrderCreateView: {str(e)}")
+            logger.error(f"Unexpected error in PhotoBookOrderCreateView: {str(e)}", exc_info=True)
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
